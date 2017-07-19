@@ -1,8 +1,50 @@
+var Vec3 = function(x, y, z) {
+	this.x = x;
+	this.y = y;
+	this.z = z;
+};
+
+Object.defineProperties(Vec3.prototype, {
+	0: { get: function() { return this.x; }, set: function(v) { this.x = v; }},
+	1: { get: function() { return this.y; }, set: function(v) { this.y = v; }},
+	2: { get: function() { return this.z; }, set: function(v) { this.z = v; }},
+
+	xxx: { get: function() { return new Vec3(this.x, this.x, this.x); }},
+	xxy: { get: function() { return new Vec3(this.x, this.x, this.y); }},
+	xxz: { get: function() { return new Vec3(this.x, this.x, this.z); }},
+	xyx: { get: function() { return new Vec3(this.x, this.y, this.x); }},
+	xyy: { get: function() { return new Vec3(this.x, this.y, this.y); }},
+	xyz: { get: function() { return new Vec3(this.x, this.y, this.z); }},
+	xzx: { get: function() { return new Vec3(this.x, this.z, this.x); }},
+	xzy: { get: function() { return new Vec3(this.x, this.z, this.y); }},
+	xzz: { get: function() { return new Vec3(this.x, this.z, this.z); }},
+
+	yxx: { get: function() { return new Vec3(this.y, this.x, this.x); }},
+	yxy: { get: function() { return new Vec3(this.y, this.x, this.y); }},
+	yxz: { get: function() { return new Vec3(this.y, this.x, this.z); }},
+	yyx: { get: function() { return new Vec3(this.y, this.y, this.x); }},
+	yyy: { get: function() { return new Vec3(this.y, this.y, this.y); }},
+	yyz: { get: function() { return new Vec3(this.y, this.y, this.z); }},
+	yzx: { get: function() { return new Vec3(this.y, this.z, this.x); }},
+	yzy: { get: function() { return new Vec3(this.y, this.z, this.y); }},
+	yzz: { get: function() { return new Vec3(this.y, this.z, this.z); }},
+
+	zxx: { get: function() { return new Vec3(this.z, this.x, this.x); }},
+	zxy: { get: function() { return new Vec3(this.z, this.x, this.y); }},
+	zxz: { get: function() { return new Vec3(this.z, this.x, this.z); }},
+	zyx: { get: function() { return new Vec3(this.z, this.y, this.x); }},
+	zyy: { get: function() { return new Vec3(this.z, this.y, this.y); }},
+	zyz: { get: function() { return new Vec3(this.z, this.y, this.z); }},
+	zzx: { get: function() { return new Vec3(this.z, this.z, this.x); }},
+	zzy: { get: function() { return new Vec3(this.z, this.z, this.y); }},
+	zzz: { get: function() { return new Vec3(this.z, this.z, this.z); }},
+});
+
 var vec3 = function(x, y, z) {
 	x = x === undefined ? 0 : x;
 	y = y === undefined ? x : y;
 	z = z === undefined ? y : z;
-	return {x: x, y: y, z: z};
+	return new Vec3(x,y,z);
 };
 
 var sqrt = Math.sqrt;
@@ -27,6 +69,10 @@ var mul = function(u,v) {
 	return vec3(u.x*v.x, u.y*v.y, u.z*v.z);
 };
 
+var div = function(u,v) {
+	return vec3(u.x/v.x, u.y/v.y, u.z/v.z);
+};
+
 var add = function(u,v) {
 	return vec3(u.x+v.x, u.y+v.y, u.z+v.z);
 };
@@ -35,8 +81,20 @@ var sub = function(u,v) {
 	return vec3(u.x-v.x, u.y-v.y, u.z-v.z);
 };
 
+var recip = function(u) {
+	return Sdiv(1, u);
+};
+
 var mulS = function(u,s) {
 	return vec3(u.x*s, u.y*s, u.z*s);
+};
+
+var divS = function(u,s) {
+	return vec3(u.x/s, u.y/s, u.z/s);
+};
+
+var Sdiv = function(s,u) {
+	return vec3(s/u.x, s/u.y, s/u.z);
 };
 
 var addS = function(u,s) {
@@ -47,12 +105,25 @@ var subS = function(u,s) {
 	return vec3(u.x-s, u.y-s, u.z-s);
 };
 
+var Ssub = function(s,u) {
+	return vec3(s-u.x, s-u.y, s-u.z);
+};
+
 var dot = function(u,v) {
 	return (u.x*v.x + u.y*v.y + u.z*v.z);
 };
 
 var reflect = function(v, nml) {
-	return add(v, mulS(nml, 2));
+	return sub(v, mulS(nml, 2*dot(v,nml)));
+};
+
+var refract = function(v, nml, eta) {
+	var d = dot(nml, v);
+	var k = 1.0 - eta * eta * (1.0 - d * d);
+	if (k < 0.0) {
+		return vec3(0);
+	}
+    return sub(mulS(v, eta), mulS(nml, (eta * d + sqrt(k))));
 };
 
 var length = function(v) {
@@ -73,6 +144,22 @@ var cross = function(u,v) {
 
 var mix = function(u, v, t) {
 	return add(mulS(u, 1-t), mulS(v, t));
+};
+
+var neg = function(v) {
+	return vec3(-v.x, -v.y, -v.z);
+};
+
+var expV = function(v) {
+	return vec3(exp(v.x), exp(v.y), exp(v.z));
+};
+
+var powV = function(v, u) {
+	return vec3(pow(v.x, u.x), pow(v.y, u.y), pow(v.z, u.z));
+};
+
+var sqrtV = function(v) {
+	return vec3(sqrt(v.x), sqrt(v.y), sqrt(v.z));
 };
 
 var floorV = function(v) {
@@ -214,10 +301,10 @@ Sphere.prototype.color = function(ray) {
 };
 
 Sphere.prototype.getBoundingBox = function() {
-	return {
-		min: sub(this.center, vec3(this.radius, this.radius, this.radius)),
-		max: add(this.center, vec3(this.radius, this.radius, this.radius)),
-	};
+	return new Box(
+		sub(this.center, vec3(this.radius)),
+		add(this.center, vec3(this.radius))
+	);
 };
 
 Sphere.prototype.intersectBox = function(box) {
@@ -351,18 +438,18 @@ Triangle.prototype.color = function(ray) {
 };
 
 Triangle.prototype.getBoundingBox = function() {
-	return {
-		min: vec3(
+	return new Box(
+		vec3(
 			min(this._vertices[0].x, this._vertices[1].x, this._vertices[2].x),
 			min(this._vertices[0].y, this._vertices[1].y, this._vertices[2].y),
 			min(this._vertices[0].z, this._vertices[1].z, this._vertices[2].z)
 			),
-		max: vec3(
+		vec3(
 			max(this._vertices[0].x, this._vertices[1].x, this._vertices[2].x),
 			max(this._vertices[0].y, this._vertices[1].y, this._vertices[2].y),
 			max(this._vertices[0].z, this._vertices[1].z, this._vertices[2].z)
 			)
-	};
+	);
 };
 
 Triangle.prototype.intersectBox = function(box) {
@@ -645,7 +732,7 @@ loader.load('bunny.obj', function(bunny) {
 	var id = ctx.getImageData(0, 0, canvasSize, canvasSize);
 
 	var scene = [
-//		new Sphere(vec3(2.5,1,1), 1, vec3(1.0, 0.7, 0.3))
+		new Sphere(vec3(2.5,1,1), 1, vec3(1.0, 0.7, 0.3))
 	];
 
 	bunny.children[0].geometry.computeBoundingBox();
@@ -667,6 +754,8 @@ loader.load('bunny.obj', function(bunny) {
 		verts[i+2] *= scale;
 	}
 
+	var bunnyTris = [];
+
 	for (var i = 0; i < verts.length; i += 3*3) {
 		var u = vec3(verts[i], verts[i+1], verts[i+2]);
 		var v = vec3(verts[i+3], verts[i+4], verts[i+5]);
@@ -674,7 +763,7 @@ loader.load('bunny.obj', function(bunny) {
 		var x = vec3(normals[i], normals[i+1], normals[i+2]);
 		var y = vec3(normals[i+3], normals[i+4], normals[i+5]);
 		var z = vec3(normals[i+6], normals[i+7], normals[i+8]);
-		scene.push(new Triangle([u,v,w], [x,y,z], add(vec3(0.8), mulS(randomVec3Positive(), 0.2))));
+		bunnyTris.push(new Triangle([u,v,w], [x,y,z], add(vec3(0.8), mulS(absV(u.xxy),0.2))));
 	}
 
 	for (var i=0; i<100; i++) {
@@ -682,7 +771,7 @@ loader.load('bunny.obj', function(bunny) {
 		var r = 0.05 + 0.2 * random();
 		c.y = r;
 		var color = randomVec3Positive();
-//		scene.push(new Sphere(c, r, color));
+		scene.push(new Sphere(c, r, color));
 	}
 
 
@@ -702,25 +791,35 @@ loader.load('bunny.obj', function(bunny) {
 		}
 	};
 
-		console.time("voxelGrid build");
-
-		var voxelGrid = new VoxelGrid(8, vec3(-1,0,-1), vec3(2), 1, 8);
-		scene.forEach(function(o) {
-			voxelGrid.add(o);
-		});
-
-		console.timeEnd("voxelGrid build");
-
 
 	function render() {
 		var t = Date.now() / 3000.0
-		camera.position.set(Math.cos(t), 0.5, Math.sin(t)).normalize().multiplyScalar(4.0);
-		camera.target = new THREE.Vector3(0, 0.5, 0);
+		camera.position.set(Math.cos(t), 0.5, Math.sin(t)).normalize().multiplyScalar(4.5);
+		camera.target = new THREE.Vector3(0, 0.75, 0);
 		camera.lookAt(camera.target);
 		camera.updateProjectionMatrix();
 		camera.updateMatrixWorld();
 
 		window.debug.innerHTML = "";
+
+
+		(console || window.console).time("voxelGrid build");
+
+		var voxelGrid = new VoxelGrid(8, vec3(-1.1,-0.1,-1.1), vec3(2.2), 1, 8);
+		bunnyTris.forEach(function(o) {
+			voxelGrid.add(o);
+		});
+
+		(console || window.console).timeEnd("voxelGrid build");
+
+		(console || window.console).time("voxelGrid2 build");
+
+		var voxelGrid2 = new VoxelGrid(16, vec3(-8.1,-0.1,-8.1), vec3(16.2), 0, 1);
+		scene.forEach(function(o) {
+			voxelGrid2.add(o);
+		});
+
+		(console || window.console).timeEnd("voxelGrid2 build");
 
 
 		console.time("trace");
@@ -741,7 +840,7 @@ loader.load('bunny.obj', function(bunny) {
 
 		var plane = new Plane(vec3(0,0,0), vec3(0,1,0), vec3(0.5));
 		var rayCount = rays.length;
-		var lastRayCount = 0;
+		var lastRayCount = rayCount;
 		VoxelGrid.stepCount = 0;
 		VoxelGrid.cmpCount = 0;
 		console.log("Tracing " + rays.length + " primary rays");
@@ -749,7 +848,11 @@ loader.load('bunny.obj', function(bunny) {
 			for (var i=0; i<rays.length; i++) {
 				var r = rays[i];
 				if (r.finished) continue;
-				var hit = voxelGrid.intersect(r);
+				var hit = voxelGrid.intersect(r);	
+				var hit1 = voxelGrid2.intersect(r);
+				if (!hit || (hit1 && hit1.distance < hit.distance)) {
+					hit = hit1;
+				}
 				var hit2 = plane.intersect(r);
 				if (hit2 > 0 && (!hit || hit2 < hit.distance)) {
 					hit = {distance: hit2, obj: plane};
@@ -791,9 +894,7 @@ loader.load('bunny.obj', function(bunny) {
 			for (var dy=0; dy<AA_SIZE; dy++) {
 				for (var dx=0; dx<AA_SIZE; dx++) {
 					var r = rays[i*AA_SIZE*AA_SIZE+dy*AA_SIZE+dx];
-					c.x += (1.0-exp(-r.light.x));
-					c.y += (1.0-exp(-r.light.y));
-					c.z += (1.0-exp(-r.light.z));
+					c = add(c, addS(neg(expV(neg(r.light))), 1));
 				}
 			}
 			c = mulS(c, 1/(AA_SIZE*AA_SIZE));
