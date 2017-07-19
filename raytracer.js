@@ -59,6 +59,10 @@ var length = function(v) {
 	return sqrt(dot(v,v));
 };
 
+var lengthSq = function(v) {
+	return dot(v,v);
+};
+
 var normalize = function(v) {
 	return mulS(v, 1 / length(v));
 };
@@ -79,6 +83,10 @@ var ceilV = function(v) {
 	return vec3(ceil(v.x), ceil(v.y), ceil(v.z));
 };
 
+var roundV = function(v) {
+	return vec3(round(v.x), round(v.y), round(v.z));
+};
+
 var maxV = function(u, v) {
 	return vec3(max(u.x, v.x), max(u.y, v.y), max(u.z, v.z));
 };
@@ -95,6 +103,10 @@ var sign = function(v) {
 	);
 };
 
+var absV = function(v) {
+	return vec3(abs(v.x), abs(v.y), abs(v.z));
+};
+
 var any = function(v) {
 	return v.x || v.y || v.z;
 };
@@ -109,6 +121,14 @@ var equal = function(u, v) {
 
 var lessThan = function(v, cmp) {
 	return vec3(v.x < cmp.x, v.y < cmp.y, v.z < cmp.z);
+};
+
+var lessThanEqual = function(v, cmp) {
+	return vec3(v.x <= cmp.x, v.y <= cmp.y, v.z <= cmp.z);
+};
+
+var greaterThan = function(v, cmp) {
+	return vec3(v.x > cmp.x, v.y > cmp.y, v.z > cmp.z);
 };
 
 var greaterThanEqual = function(v, cmp) {
@@ -201,7 +221,23 @@ Sphere.prototype.getBoundingBox = function() {
 };
 
 Sphere.prototype.intersectBox = function(box) {
-	return true;
+	var check = function(v, min, max) {
+		if (v < min) {
+			var val = min - v;
+			return val * val;
+		}
+		if (v > max) {
+			var val = v - max;
+			return val * val;
+		}
+		return 0;
+	};
+	var sq = 0;
+	var c = this.center;
+	sq += check(c.x, box.min.x, box.max.x);
+	sq += check(c.y, box.min.y, box.max.y);
+	sq += check(c.z, box.min.z, box.max.z);
+	return sq <= this.radius * this.radius;
 };
 
 var Plane = function(point, normal, color) {
@@ -330,6 +366,67 @@ Triangle.prototype.getBoundingBox = function() {
 };
 
 Triangle.prototype.intersectBox = function(box) {
+	var project = function(points, axis, minMax) {
+	    var min = 1/0;
+	    var max = -1/0;
+	    for (var i=0; i<points.length; i++) {
+	        var val = dot(axis, points[i]);
+	        if (val < min) min = val;
+	        if (val > max) max = val;
+	    }
+	    minMax.min = min;
+	    minMax.max = max;
+	};
+
+    var boxNormals = [vec3(1,0,0), vec3(0,1,0), vec3(0,0,1)];
+    var boxVertices = [
+    	box.min, 
+    	box.max,
+    	vec3(box.min.x, box.min.y, box.max.z),
+    	vec3(box.min.x, box.max.y, box.min.z),
+    	vec3(box.min.x, box.max.y, box.max.z),
+    	vec3(box.max.x, box.max.y, box.min.z),
+    	vec3(box.max.x, box.min.y, box.max.z),
+    	vec3(box.max.x, box.min.y, box.min.z)
+    ];
+
+    // Test the box normals (x-, y- and z-axes)
+    var minMax = {min: 0, max: 0};
+    var triMinMax = {min: 0, max: 0};
+    project(this._vertices, boxNormals[0], minMax);
+    if (minMax.max < box.min.x || minMax.min > box.max.x)
+        return false; // No intersection possible.
+    project(this._vertices, boxNormals[1], minMax);
+    if (minMax.max < box.min.y || minMax.min > box.max.y)
+        return false; // No intersection possible.
+    project(this._vertices, boxNormals[2], minMax);
+    if (minMax.max < box.min.z || minMax.min > box.max.z)
+        return false; // No intersection possible.
+
+    // Test the triangle normal
+    var triangleOffset = dot(this._normals[0], this._vertices[0]);
+    project(boxVertices, this._normals[0], minMax);
+    if (minMax.max < triangleOffset || minMax.min > triangleOffset)
+        return false; // No intersection possible.
+
+    // Test the nine edge cross-products
+    var triangleEdges = [
+        sub(this._vertices[0], this._vertices[1]),
+        sub(this._vertices[1], this._vertices[2]),
+        sub(this._vertices[2], this._vertices[0]),
+    ];
+    for (var i = 0; i < 3; i++)
+    for (var j = 0; j < 3; j++)
+    {
+        // The box normals are the same as it's edge tangents
+        var axis = cross(triangleEdges[i], boxNormals[j]);
+        project(boxVertices, axis, minMax);
+        project(this._vertices, axis, triMinMax);
+        if (minMax.max < triMinMax.min || minMax.min > triMinMax.max)
+            return false; // No intersection possible
+    }
+
+    // No separating axis found.
 	return true;
 };
 
@@ -436,7 +533,7 @@ VoxelGrid.prototype.add = function(obj) {
 				if (obj.intersectBox(box)) {
 					var v = this._voxels[z][y][x];
 					if (!v) {
-						v = this._voxels[z][y][x] = this._leaf === 0 ? new Voxel() : new VoxelGrid(16, this.fromGrid(vec3(x,y,z)), vec3(this._scale), this._leaf-1, this._levelSize);
+						v = this._voxels[z][y][x] = this._leaf === 0 ? new Voxel() : new VoxelGrid(this._levelSize, this.fromGrid(vec3(x,y,z)), vec3(this._scale), this._leaf-1, this._levelSize);
 					}
 					v.add(obj);
 				}
@@ -548,7 +645,7 @@ loader.load('bunny.obj', function(bunny) {
 	var id = ctx.getImageData(0, 0, canvasSize, canvasSize);
 
 	var scene = [
-		new Sphere(vec3(2.5,1,1), 1, vec3(1.0, 0.7, 0.3))
+//		new Sphere(vec3(2.5,1,1), 1, vec3(1.0, 0.7, 0.3))
 	];
 
 	bunny.children[0].geometry.computeBoundingBox();
@@ -585,8 +682,9 @@ loader.load('bunny.obj', function(bunny) {
 		var r = 0.05 + 0.2 * random();
 		c.y = r;
 		var color = randomVec3Positive();
-		scene.push(new Sphere(c, r, color));
+//		scene.push(new Sphere(c, r, color));
 	}
+
 
 	var console = {
 		timers: {},
@@ -604,6 +702,15 @@ loader.load('bunny.obj', function(bunny) {
 		}
 	};
 
+		console.time("voxelGrid build");
+
+		var voxelGrid = new VoxelGrid(8, vec3(-1,0,-1), vec3(2), 1, 8);
+		scene.forEach(function(o) {
+			voxelGrid.add(o);
+		});
+
+		console.timeEnd("voxelGrid build");
+
 
 	function render() {
 		var t = Date.now() / 3000.0
@@ -614,15 +721,6 @@ loader.load('bunny.obj', function(bunny) {
 		camera.updateMatrixWorld();
 
 		window.debug.innerHTML = "";
-
-		console.time("voxelGrid build");
-
-		var voxelGrid = new VoxelGrid(11, vec3(-8), vec3(16), 1, 11);
-		scene.forEach(function(o) {
-			voxelGrid.add(o);
-		});
-
-		console.timeEnd("voxelGrid build");
 
 
 		console.time("trace");
