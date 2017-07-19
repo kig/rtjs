@@ -531,7 +531,7 @@ loader.load('bunny.obj', function(bunny) {
 	camera.updateProjectionMatrix();
 	camera.updateMatrixWorld();
 
-	var canvasSize = 200;
+	var canvasSize = 100;
 	var AA_SIZE = 1;
 
 	var canvas = document.createElement('canvas');
@@ -619,6 +619,8 @@ loader.load('bunny.obj', function(bunny) {
 
 		var plane = new Plane(vec3(0,0,0), vec3(0,1,0), vec3(0.5));
 		var rayCount = rays.length;
+		VoxelGrid.stepCount = 0;
+		VoxelGrid.cmpCount = 0;
 		console.log("Tracing " + rays.length + " primary rays");
 		for (var j=0; j<6; j++) {
 			for (var i=0; i<rays.length; i++) {
@@ -685,6 +687,6 @@ loader.load('bunny.obj', function(bunny) {
 		requestAnimationFrame(tick);
 	};
 
-	tick();
+	requestAnimationFrame(tick);
 });
 
