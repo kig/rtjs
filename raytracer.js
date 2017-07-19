@@ -162,14 +162,16 @@ var Sphere = function(center, radius, color) {
 	this.center = center;
 	this.radius = radius;
 	this._color = color;
-	this._lastIntersect = {ray: null, t: -1/0};
+	this._lastIntersect = {o: null, d: null, t: -1/0};
 };
 
 Sphere.prototype.intersect = function(ray) {
-	if (this._lastIntersect.ray === ray) {
+	if (this._lastIntersect.o === ray.o &&
+		this._lastIntersect.d === ray.d) {
 		return this._lastIntersect.t;
 	}
-	this._lastIntersect.ray = ray;
+	this._lastIntersect.o = ray.o;
+	this._lastIntersect.d = ray.d;
 	var rc = sub(ray.o, this.center); 
 	var c = dot(rc, rc) - this.radius*this.radius;
 	var b = dot(ray.d, rc);
@@ -248,14 +250,16 @@ var Triangle = function(vertices, normals, color) {
 	this._vertices = vertices;
 	this._normals = normals;
 	this._color = color;
-	this._lastIntersect = {ray: null, t: -1/0};
+	this._lastIntersect = {o: null, d: null, t: -1/0};
 };
 
 Triangle.prototype.intersect = function(ray) {
-	if (this._lastIntersect.ray === ray) {
+	if (this._lastIntersect.o === ray.o &&
+		this._lastIntersect.d === ray.d) {
 		return this._lastIntersect.t;
 	}
-	this._lastIntersect.ray = ray;
+	this._lastIntersect.o = ray.o;
+	this._lastIntersect.d = ray.d;
 
 	var e1,e2,h,s,q; // vec3
 	var a,f,u,v,t; // float
@@ -397,12 +401,13 @@ Voxel.prototype.intersect = function(ray) {
 };
 
 
-var VoxelGrid = function(size, origin, dims, leaf) {
+var VoxelGrid = function(size, origin, dims, leaf, levelSize) {
 	this._origin = origin;
 	this._dims = dims;
 	this._size = size;
 	this._scale = this._dims.x / this._size;
-	this._leaf = !!leaf;
+	this._leaf = leaf;
+	this._levelSize = levelSize;
 	var voxels = [];
 	for (var z=0; z<size; z++) {
 		var vz = voxels[z] = [];
@@ -431,7 +436,7 @@ VoxelGrid.prototype.add = function(obj) {
 				if (obj.intersectBox(box)) {
 					var v = this._voxels[z][y][x];
 					if (!v) {
-						v = this._voxels[z][y][x] = this._leaf ? new Voxel() : new VoxelGrid(13, this.fromGrid(vec3(x,y,z)), vec3(this._scale), true);
+						v = this._voxels[z][y][x] = this._leaf === 0 ? new Voxel() : new VoxelGrid(16, this.fromGrid(vec3(x,y,z)), vec3(this._scale), this._leaf-1, this._levelSize);
 					}
 					v.add(obj);
 				}
@@ -583,14 +588,21 @@ loader.load('bunny.obj', function(bunny) {
 		scene.push(new Sphere(c, r, color));
 	}
 
-	console.time("voxelGrid build");
-
-	var voxelGrid = new VoxelGrid(11, vec3(-8), vec3(16), false);
-	scene.forEach(function(o) {
-		voxelGrid.add(o);
-	});
-
-	console.timeEnd("voxelGrid build");
+	var console = {
+		timers: {},
+		time: function(n) {
+			this.timers[n] = performance.now();
+		},
+		timeEnd: function(n) {
+			var ms = performance.now() - this.timers[n];
+			this.log(n + " " + ms + " ms");
+		},
+		log: function() {
+			var d = document.createElement('div');
+			d.textContent = [].join.call(arguments, " ");
+			window.debug.appendChild(d);
+		}
+	};
 
 
 	function render() {
@@ -600,6 +612,18 @@ loader.load('bunny.obj', function(bunny) {
 		camera.lookAt(camera.target);
 		camera.updateProjectionMatrix();
 		camera.updateMatrixWorld();
+
+		window.debug.innerHTML = "";
+
+		console.time("voxelGrid build");
+
+		var voxelGrid = new VoxelGrid(11, vec3(-8), vec3(16), 1, 11);
+		scene.forEach(function(o) {
+			voxelGrid.add(o);
+		});
+
+		console.timeEnd("voxelGrid build");
+
 
 		console.time("trace");
 
@@ -619,10 +643,11 @@ loader.load('bunny.obj', function(bunny) {
 
 		var plane = new Plane(vec3(0,0,0), vec3(0,1,0), vec3(0.5));
 		var rayCount = rays.length;
+		var lastRayCount = 0;
 		VoxelGrid.stepCount = 0;
 		VoxelGrid.cmpCount = 0;
 		console.log("Tracing " + rays.length + " primary rays");
-		for (var j=0; j<6; j++) {
+		for (var j=0; j<5; j++) {
 			for (var i=0; i<rays.length; i++) {
 				var r = rays[i];
 				if (r.finished) continue;
@@ -651,7 +676,8 @@ loader.load('bunny.obj', function(bunny) {
 					r.finished = true;
 				}
 			}
-			console.log("Bounce " + j + ", traced " + rayCount);
+			console.log("Bounce " + j + ", traced " + (rayCount-lastRayCount));
+			lastRayCount = rayCount;
 		}
 
 		console.timeEnd("trace");
