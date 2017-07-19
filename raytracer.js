@@ -35,7 +35,7 @@ var setupRay = function(camera, x, y, w, h) {
 	var target = new THREE.Vector3();
 	target.addVectors( origin, direction.multiplyScalar(camera.position.distanceTo(camera.target)) );
 
-	origin.add( new THREE.Vector3().copy(diskPoint()).multiplyScalar(0.01).applyMatrix4(camera.matrixWorld) );
+	origin.add( new THREE.Vector3().copy(diskPoint()).multiplyScalar(0.5).applyMatrix4(camera.matrixWorld) );
 	direction.subVectors( target, origin ).normalize();
 
 	var ray = new Ray(vec3(origin.x, origin.y, origin.z), vec3(direction.x, direction.y, direction.z), 0);
@@ -106,7 +106,6 @@ loader.load('bunny.obj', function(bunny) {
 		scene.push(new Sphere(c, r, color));
 	}
 
-
 	var console = {
 		timers: {},
 		time: function(n) {
@@ -134,7 +133,6 @@ loader.load('bunny.obj', function(bunny) {
 
 		window.debug.innerHTML = "";
 
-
 		(console || window.console).time("voxelGrid build");
 
 		var voxelGrid = new VoxelGrid(8, vec3(-1.1,-0.1,-1.1), vec3(2.2), 1, 8);
@@ -147,7 +145,8 @@ loader.load('bunny.obj', function(bunny) {
 		(console || window.console).time("voxelGrid2 build");
 
 		var voxelGrid2 = new VoxelGrid(16, vec3(-8.1,-0.1,-8.1), vec3(16.2), 0, 1);
-		scene.forEach(function(o) {
+		scene.forEach(function(o,i) {
+			o.center.y = abs(sin(i + t*10))*o.radius*2 + o.radius
 			voxelGrid2.add(o);
 		});
 
@@ -219,7 +218,7 @@ loader.load('bunny.obj', function(bunny) {
 		console.log(VoxelGrid.stepCount, "VoxelGrid steps");
 		console.log(VoxelGrid.cmpCount, "Primitive intersection tests");
 		console.log(VoxelGrid.stepCount / rays.length, "steps per ray")
-		console.log(VoxelGrid.cmpCount / rays.length, "primitive intersections tests per ray");
+		console.log(VoxelGrid.cmpCount / rays.length, "primitive intersection tests per ray (+ ground plane)");
 
 		for (var i=0; i<canvasSize*canvasSize; i++) {
 			var c = vec3();
