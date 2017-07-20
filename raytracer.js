@@ -133,18 +133,26 @@ loader.load('bunny.obj', function(bunny) {
 
 		window.debug.innerHTML = "";
 
-		(console || window.console).time("voxelGrid build");
+		// (console || window.console).time("voxelGrid build");
 
-		var voxelGrid = new VoxelGrid(8, vec3(-1.1,-0.1,-1.1), vec3(2.2), 1, 8);
-		bunnyTris.forEach(function(o) {
-			voxelGrid.add(o);
-		});
+		// var voxelGrid = new VoxelGrid2(8, vec3(-1.1,-0.1,-1.1), vec3(2.2), 1, 8);
+		// bunnyTris.forEach(function(o) {
+		// 	voxelGrid.add(o);
+		// });
 
-		(console || window.console).timeEnd("voxelGrid build");
+		// (console || window.console).timeEnd("voxelGrid build");
+
+		(console || window.console).time("BVH build");
+
+		var bvh = new BVHNode(bunnyTris);
+		console.log("Built BVH, size", bvh.subTreeSize);
+
+		(console || window.console).timeEnd("BVH build");
+
 
 		(console || window.console).time("voxelGrid2 build");
 
-		var voxelGrid2 = new VoxelGrid(16, vec3(-8.1,-0.1,-8.1), vec3(16.2), 0, 1);
+		var voxelGrid2 = new VoxelGrid2(16, vec3(-8.1,-0.1,-8.1), vec3(16.2), 0, 1);
 		scene.forEach(function(o,i) {
 			o.center.y = abs(sin(i + t*10))*o.radius*2 + o.radius
 			voxelGrid2.add(o);
@@ -174,12 +182,14 @@ loader.load('bunny.obj', function(bunny) {
 		var lastRayCount = rayCount;
 		VoxelGrid.stepCount = 0;
 		VoxelGrid.cmpCount = 0;
+		BVHNode.visitedCount = 0;
+		BVHNode.primitiveTests = 0;
 		console.log("Tracing " + rays.length + " primary rays");
 		for (var j=0; j<5; j++) {
 			for (var i=0; i<rays.length; i++) {
 				var r = rays[i];
 				if (r.finished) continue;
-				var hit = voxelGrid.intersect(r);	
+				var hit = bvh.intersect(r);	
 				var hit1 = voxelGrid2.intersect(r);
 				if (!hit || (hit1 && hit1.distance < hit.distance)) {
 					hit = hit1;
@@ -215,10 +225,16 @@ loader.load('bunny.obj', function(bunny) {
 		console.timeEnd("trace");
 
 		console.log("Traced " + rayCount + " rays");
+
 		console.log(VoxelGrid.stepCount, "VoxelGrid steps");
-		console.log(VoxelGrid.cmpCount, "Primitive intersection tests");
-		console.log(VoxelGrid.stepCount / rays.length, "steps per ray")
-		console.log(VoxelGrid.cmpCount / rays.length, "primitive intersection tests per ray (+ ground plane)");
+		console.log(VoxelGrid.cmpCount, "VoxelGrid primitive intersection tests");
+		console.log(VoxelGrid.stepCount / rays.length, "VG steps per ray")
+		console.log(VoxelGrid.cmpCount / rays.length, "VG primitive intersection tests per ray");
+
+		console.log(BVHNode.visitedCount, "BVH visited nodes");
+		console.log(BVHNode.primitiveTests, "BVH primitive intersection tests");
+		console.log(BVHNode.visitedCount / rays.length, "BVH nodes per ray")
+		console.log(BVHNode.primitiveTests / rays.length, "BVH primitive intersection tests per ray");
 
 		for (var i=0; i<canvasSize*canvasSize; i++) {
 			var c = vec3();
