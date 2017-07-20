@@ -142,23 +142,23 @@ loader.load('bunny.obj', function(bunny) {
 
 		// (console || window.console).timeEnd("voxelGrid build");
 
+		// (console || window.console).time("voxelGrid2 build");
+
+		// var voxelGrid2 = new VoxelGrid2(16, vec3(-8.1,-0.1,-8.1), vec3(16.2), 0, 1);
+		scene.forEach(function(o,i) {
+		 	o.center = vec3(o.center.x, abs(sin(i + t*10))*o.radius*2 + o.radius, o.center.z);
+		// 	voxelGrid2.add(o);
+		});
+
+		// (console || window.console).timeEnd("voxelGrid2 build");
+
 		(console || window.console).time("BVH build");
 
-		var bvh = new BVHNode(bunnyTris);
+		var bvh = new BVHNode(bunnyTris.concat(scene));
 		console.log("Built BVH, size", bvh.subTreeSize);
 
 		(console || window.console).timeEnd("BVH build");
 
-
-		(console || window.console).time("voxelGrid2 build");
-
-		var voxelGrid2 = new VoxelGrid2(16, vec3(-8.1,-0.1,-8.1), vec3(16.2), 0, 1);
-		scene.forEach(function(o,i) {
-			o.center.y = abs(sin(i + t*10))*o.radius*2 + o.radius
-			voxelGrid2.add(o);
-		});
-
-		(console || window.console).timeEnd("voxelGrid2 build");
 
 
 		console.time("trace");
@@ -190,10 +190,10 @@ loader.load('bunny.obj', function(bunny) {
 				var r = rays[i];
 				if (r.finished) continue;
 				var hit = bvh.intersect(r);	
-				var hit1 = voxelGrid2.intersect(r);
-				if (!hit || (hit1 && hit1.distance < hit.distance)) {
-					hit = hit1;
-				}
+				//var hit1 = voxelGrid2.intersect(r);
+				//if (!hit || (hit1 && hit1.distance < hit.distance)) {
+				//	hit = hit1;
+				//}
 				var hit2 = plane.intersect(r);
 				if (hit2 > 0 && (!hit || hit2 < hit.distance)) {
 					hit = {distance: hit2, obj: plane};
@@ -226,10 +226,12 @@ loader.load('bunny.obj', function(bunny) {
 
 		console.log("Traced " + rayCount + " rays");
 
+		/*
 		console.log(VoxelGrid.stepCount, "VoxelGrid steps");
 		console.log(VoxelGrid.cmpCount, "VoxelGrid primitive intersection tests");
 		console.log(VoxelGrid.stepCount / rays.length, "VG steps per ray")
 		console.log(VoxelGrid.cmpCount / rays.length, "VG primitive intersection tests per ray");
+		*/
 
 		console.log(BVHNode.visitedCount, "BVH visited nodes");
 		console.log(BVHNode.primitiveTests, "BVH primitive intersection tests");
