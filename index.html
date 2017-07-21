@@ -1,11 +1,68 @@
-<body>
-<script src="lib/third_party/three.js"></script>
-<script src="lib/third_party/OBJLoader.js"></script>
-<script src="lib/vec3.js"></script>
-<script src="lib/primitives.js"></script>
-<script src="lib/voxelgrid.js"></script>
-<script src="lib/bvh.js"></script>
-<script src="lib/voxelgrid_uint16.js"></script>
-<script src="raytracer.js"></script>
-<div id="debug"></div>
-</body>
+<!doctype html>
+<html>
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+		<title>Ray Tracing Algo Workbench</title>
+		<style>
+			html, body {
+				overflow-x: hidden;
+				margin: 0;
+				padding: 0;
+
+			}
+			canvas {
+				position: absolute;
+				top: 0;
+				left: 0;
+				width: 100%;
+			}
+			#controls {
+				position: absolute;
+				left: 0;
+				top: 100vw;
+				width: 100vw;
+				padding: 10px;
+			}
+			@media (min-width: 500px) {
+				canvas {
+					width: 300px;
+				}
+				#controls {
+					width: 300px;
+					top: 300px;
+				}
+			}
+		</style>
+	</head>
+	<body>
+		<div id="controls">
+			<button id="useBVH">BVH</button>
+			<button id="useVoxelGrid">VoxelGrid</button>
+			<button id="pauseButton">Pause</button>
+			<div>
+				Canvas size
+				<input type="range" min="50" max="300" step="50" value="100" id="canvasSize">
+			</div>
+			<div>
+				Primary rays per pixel
+				<input type="range" min="1" max="4" step="1" value="1" id="aaSize">
+			</div>
+			<div>
+				Aperture size
+				<input type="range" min="0" max="9" step="1" value="2" id="apertureSize">
+			</div>
+			<div id="debug"></div>
+		</div>
+
+		<script src="lib/third_party/three.js"></script>
+		<script src="lib/third_party/OBJLoader.js"></script>
+		<script src="lib/vec3.js"></script>
+		<script src="lib/primitives.js"></script>
+		<script src="lib/voxelgrid.js"></script>
+		<script src="lib/bvh.js"></script>
+		<script src="lib/voxelgrid_uint16.js"></script>
+		<script src="raytracer.js"></script>
+
+	</body>
+</html>

@@ -33,9 +33,10 @@ var setupRay = function(camera, x, y, w, h) {
 	direction.set( uv.x, uv.y, 0.5 ).unproject( camera ).sub( origin ).normalize();
 
 	var target = new THREE.Vector3();
-	target.addVectors( origin, direction.multiplyScalar(camera.position.distanceTo(camera.target)) );
+	var focusDistance = origin.distanceTo(camera.focusPoint);
+	target.addVectors( origin, direction.multiplyScalar(focusDistance));
 
-	origin.add( new THREE.Vector3().copy(diskPoint()).multiplyScalar(0.5).applyMatrix4(camera.matrixWorld) );
+	origin.add( new THREE.Vector3().copy(diskPoint()).multiplyScalar(camera.apertureSize).applyMatrix4(camera.matrixWorld) );
 	direction.subVectors( target, origin ).normalize();
 
 	var ray = new Ray(vec3(origin.x, origin.y, origin.z), vec3(direction.x, direction.y, direction.z), 0);
@@ -45,23 +46,16 @@ var setupRay = function(camera, x, y, w, h) {
 
 var loader = new THREE.OBJLoader;
 loader.load('bunny.obj', function(bunny) {
-	var camera = new THREE.PerspectiveCamera(35, 1, 0.1, 100);
+	var camera = new THREE.PerspectiveCamera(55, 1, 0.1, 100);
 	camera.position.set(3.5, 1.5, 3.5).normalize().multiplyScalar(4.0);
 	camera.target = new THREE.Vector3(0, 0.5, 0);
 	camera.lookAt(camera.target);
 	camera.updateProjectionMatrix();
 	camera.updateMatrixWorld();
 
-	var canvasSize = 100;
-	var AA_SIZE = 1;
-
 	var canvas = document.createElement('canvas');
-	canvas.width = canvas.height = canvasSize;
-
 	document.body.appendChild(canvas);
-
 	var ctx = canvas.getContext('2d');
-	var id = ctx.getImageData(0, 0, canvasSize, canvasSize);
 
 	var scene = [
 		new Sphere(vec3(2.5,1,1), 1, vec3(1.0, 0.7, 0.3))
@@ -122,44 +116,145 @@ loader.load('bunny.obj', function(bunny) {
 		}
 	};
 
+	var acceleration = "BVH";
+	var paused = false;
+
+	window.useBVH.onclick = function() {
+		acceleration = "BVH";
+		wasDown = true;
+	};
+
+	window.useVoxelGrid.onclick = function() {
+		acceleration = "VoxelGrid";
+		wasDown = true;
+	};
+
+	window.pauseButton.onclick = function() {
+		paused = !paused;
+	};
+
+	window.canvasSize.onchange = window.aaSize.onchange = window.apertureSize.onchange = function() {
+		wasDown = true;
+	};
+
+	var down = false;
+	var wasDown = true;
+	var mouse = vec3(-1);
+	var alpha = Math.asin(0.5);
+	var theta = 0;
+	canvas.onmousedown = function(ev) {
+		if (ev.button === 0) {
+			down = true;
+			mouse = vec3(ev.clientX, ev.clientY, ev.button);
+			ev.preventDefault();
+		}
+	};
+	window.onmousemove = function(ev) {
+		if (down) {
+			console.log(ev);
+			var newMouse = vec3(ev.clientX, ev.clientY, ev.button||0);
+			var d = sub(newMouse, mouse);
+			mouse = newMouse;
+			theta += d.x * 0.01;
+			alpha += d.y * 0.01;
+			alpha = max(0, min(alpha, Math.PI/2))
+		}
+	};
+	window.onmouseup = function(ev) {
+		if (down) {
+			down = false;
+			ev.preventDefault();
+		}
+	};
+	canvas.addEventListener('touchstart', function(ev) {
+		down = true;
+		mouse = vec3(ev.touches[0].clientX, ev.touches[0].clientY, 0);
+		ev.preventDefault();
+	}, false);
+	canvas.addEventListener('touchmove', function(ev) {
+		if (down) {
+			var newMouse = vec3(ev.touches[0].clientX, ev.touches[0].clientY, 0);
+			var d = sub(newMouse, mouse);
+			mouse = newMouse;
+			theta += d.x * 0.01;
+			alpha += d.y * 0.01;
+			alpha = max(0, min(alpha, Math.PI/2))
+			ev.preventDefault();
+		}
+	}, false);
+	canvas.addEventListener('touchend', function(ev) {
+		down = false;
+		ev.preventDefault();
+	}, false);
+	canvas.addEventListener('touchcancel', function(ev) {
+		down = false;
+		ev.preventDefault();
+	}, false);
+
+	var t = 0;
 
 	function render() {
-		var t = Date.now() / 3000.0
-		camera.position.set(Math.cos(t), 0.5, Math.sin(t)).normalize().multiplyScalar(4.5);
+		if (!down && !wasDown && paused) return;
+		if (!paused) t += 16;
+		camera.position.set(Math.cos(theta)*Math.cos(alpha), Math.sin(alpha), Math.cos(alpha)*Math.sin(theta)).normalize().multiplyScalar(4.5);
 		camera.target = new THREE.Vector3(0, 0.75, 0);
+		camera.focusPoint = vec3(-1, 0.7, 0.2);
 		camera.lookAt(camera.target);
 		camera.updateProjectionMatrix();
 		camera.updateMatrixWorld();
 
+		var canvasSize = parseInt(window.canvasSize.value);
+		var AA_SIZE = parseInt(window.aaSize.value);
+		if (down) {
+			canvasSize = 50;
+			AA_SIZE = 1;
+			wasDown = true;
+		} else if (wasDown) {
+			wasDown = false;
+		}
+		var apertureSize = parseInt(window.apertureSize.value);
+		camera.apertureSize = Math.pow(1.33, -apertureSize);
+
+		canvas.width = canvas.height = canvasSize;
+
+		var id = ctx.getImageData(0, 0, canvasSize, canvasSize);
+
 		window.debug.innerHTML = "";
 
-		// (console || window.console).time("voxelGrid build");
-
-		// var voxelGrid = new VoxelGrid2(8, vec3(-1.1,-0.1,-1.1), vec3(2.2), 1, 8);
-		// bunnyTris.forEach(function(o) {
-		// 	voxelGrid.add(o);
-		// });
-
-		// (console || window.console).timeEnd("voxelGrid build");
-
-		// (console || window.console).time("voxelGrid2 build");
-
-		// var voxelGrid2 = new VoxelGrid2(16, vec3(-8.1,-0.1,-8.1), vec3(16.2), 0, 1);
 		scene.forEach(function(o,i) {
-		 	o.center = vec3(o.center.x, abs(sin(i + t*10))*o.radius*2 + o.radius, o.center.z);
-		// 	voxelGrid2.add(o);
-		});
+		 	o.center = vec3(o.center.x, abs(sin(i + t/300))*o.radius*2 + o.radius, o.center.z);
+		 });
 
-		// (console || window.console).timeEnd("voxelGrid2 build");
+		if (acceleration === 'VoxelGrid') {
 
-		(console || window.console).time("BVH build");
+			(console || window.console).time("voxelGrid build");
 
-		var bvh = new BVHNode(bunnyTris.concat(scene));
-		console.log("Built BVH, size", bvh.subTreeSize);
+			var voxelGrid = new VoxelGrid2(8, vec3(-1.1,-0.1,-1.1), vec3(2.2), 1, 8);
+			bunnyTris.forEach(function(o) {
+				voxelGrid.add(o);
+			});
 
-		(console || window.console).timeEnd("BVH build");
+			(console || window.console).timeEnd("voxelGrid build");
 
+			(console || window.console).time("voxelGrid2 build");
 
+			var voxelGrid2 = new VoxelGrid2(16, vec3(-8.1,-0.1,-8.1), vec3(16.2), 0, 1);
+			scene.forEach(function(o,i) {
+				voxelGrid2.add(o);
+			});
+
+			(console || window.console).timeEnd("voxelGrid2 build");
+
+		} else if (acceleration === 'BVH') {
+
+			(console || window.console).time("BVH build");
+
+			var bvh = new BVHNode(bunnyTris.concat(scene));
+			console.log("Built BVH, size", bvh.subTreeSize);
+
+			(console || window.console).timeEnd("BVH build");
+
+		}
 
 		console.time("trace");
 
@@ -178,29 +273,33 @@ loader.load('bunny.obj', function(bunny) {
 		}
 
 		var plane = new Plane(vec3(0,0,0), vec3(0,1,0), vec3(0.5));
-		var rayCount = rays.length;
+		var rayCount = 0;
 		var lastRayCount = rayCount;
 		VoxelGrid.stepCount = 0;
 		VoxelGrid.cmpCount = 0;
 		BVHNode.visitedCount = 0;
 		BVHNode.primitiveTests = 0;
 		console.log("Tracing " + rays.length + " primary rays");
-		for (var j=0; j<5; j++) {
+		for (var j=0; j<6; j++) {
 			for (var i=0; i<rays.length; i++) {
 				var r = rays[i];
 				if (r.finished) continue;
-				var hit = bvh.intersect(r);	
-				//var hit1 = voxelGrid2.intersect(r);
-				//if (!hit || (hit1 && hit1.distance < hit.distance)) {
-				//	hit = hit1;
-				//}
+				rayCount++;
+				if (acceleration === 'BVH') {
+					var hit = bvh.intersect(r);	
+				} else {
+					var hit = voxelGrid.intersect(r);	
+					var hit1 = voxelGrid2.intersect(r);
+					if (!hit || (hit1 && hit1.distance < hit.distance)) {
+						hit = hit1;
+					}
+				}
 				var hit2 = plane.intersect(r);
 				if (hit2 > 0 && (!hit || hit2 < hit.distance)) {
 					hit = {distance: hit2, obj: plane};
 				}
 				if (hit) {
 					if (r.bounce < 5) {
-						rayCount++;
 						r.o = add(r.o, mulS(r.d, hit.distance));
 						var c = hit.obj.color(r);
 						r.transmit = mul(r.transmit, c);
@@ -226,17 +325,20 @@ loader.load('bunny.obj', function(bunny) {
 
 		console.log("Traced " + rayCount + " rays");
 
-		/*
-		console.log(VoxelGrid.stepCount, "VoxelGrid steps");
-		console.log(VoxelGrid.cmpCount, "VoxelGrid primitive intersection tests");
-		console.log(VoxelGrid.stepCount / rays.length, "VG steps per ray")
-		console.log(VoxelGrid.cmpCount / rays.length, "VG primitive intersection tests per ray");
-		*/
+		
+		if (acceleration === 'VoxelGrid') {
+			console.log(VoxelGrid.stepCount, "VoxelGrid steps");
+			console.log(VoxelGrid.cmpCount, "VoxelGrid primitive intersection tests");
+			console.log(VoxelGrid.stepCount / rayCount, "VG steps per ray")
+			console.log(VoxelGrid.cmpCount / rayCount, "VG primitive intersection tests per ray");
+		}
 
-		console.log(BVHNode.visitedCount, "BVH visited nodes");
-		console.log(BVHNode.primitiveTests, "BVH primitive intersection tests");
-		console.log(BVHNode.visitedCount / rays.length, "BVH nodes per ray")
-		console.log(BVHNode.primitiveTests / rays.length, "BVH primitive intersection tests per ray");
+		if (acceleration === 'BVH') {
+			console.log(BVHNode.visitedCount, "BVH visited nodes");
+			console.log(BVHNode.primitiveTests, "BVH primitive intersection tests");
+			console.log(BVHNode.visitedCount / rayCount, "BVH nodes per ray")
+			console.log(BVHNode.primitiveTests / rayCount, "BVH primitive intersection tests per ray");
+		}
 
 		for (var i=0; i<canvasSize*canvasSize; i++) {
 			var c = vec3();
