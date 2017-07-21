@@ -47,8 +47,9 @@ var setupRay = function(camera, x, y, w, h) {
 var loader = new THREE.OBJLoader;
 loader.load('bunny.obj', function(bunny) {
 	var camera = new THREE.PerspectiveCamera(55, 1, 0.1, 100);
-	camera.position.set(3.5, 1.5, 3.5).normalize().multiplyScalar(4.0);
-	camera.target = new THREE.Vector3(0, 0.5, 0);
+	camera.target = new THREE.Vector3(0, 0.75, 0);
+	camera.focusPoint = vec3(-1, 0.7, 0.2);
+	camera.positionOffset = new THREE.Vector3();
 	camera.lookAt(camera.target);
 	camera.updateProjectionMatrix();
 	camera.updateMatrixWorld();
@@ -121,12 +122,12 @@ loader.load('bunny.obj', function(bunny) {
 
 	window.useBVH.onclick = function() {
 		acceleration = "BVH";
-		wasDown = true;
+		controls.wasDown = true;
 	};
 
 	window.useVoxelGrid.onclick = function() {
 		acceleration = "VoxelGrid";
-		wasDown = true;
+		controls.wasDown = true;
 	};
 
 	window.pauseButton.onclick = function() {
@@ -134,83 +135,29 @@ loader.load('bunny.obj', function(bunny) {
 	};
 
 	window.canvasSize.onchange = window.aaSize.onchange = window.apertureSize.onchange = function() {
-		wasDown = true;
+		controls.wasDown = true;
 	};
 
-	var down = false;
-	var wasDown = true;
-	var mouse = vec3(-1);
-	var alpha = Math.asin(0.5);
-	var theta = 0;
-	canvas.onmousedown = function(ev) {
-		if (ev.button === 0) {
-			down = true;
-			mouse = vec3(ev.clientX, ev.clientY, ev.button);
-			ev.preventDefault();
-		}
-	};
-	window.onmousemove = function(ev) {
-		if (down) {
-			console.log(ev);
-			var newMouse = vec3(ev.clientX, ev.clientY, ev.button||0);
-			var d = sub(newMouse, mouse);
-			mouse = newMouse;
-			theta += d.x * 0.01;
-			alpha += d.y * 0.01;
-			alpha = max(0, min(alpha, Math.PI/2))
-		}
-	};
-	window.onmouseup = function(ev) {
-		if (down) {
-			down = false;
-			ev.preventDefault();
-		}
-	};
-	canvas.addEventListener('touchstart', function(ev) {
-		down = true;
-		mouse = vec3(ev.touches[0].clientX, ev.touches[0].clientY, 0);
-		ev.preventDefault();
-	}, false);
-	canvas.addEventListener('touchmove', function(ev) {
-		if (down) {
-			var newMouse = vec3(ev.touches[0].clientX, ev.touches[0].clientY, 0);
-			var d = sub(newMouse, mouse);
-			mouse = newMouse;
-			theta += d.x * 0.01;
-			alpha += d.y * 0.01;
-			alpha = max(0, min(alpha, Math.PI/2))
-			ev.preventDefault();
-		}
-	}, false);
-	canvas.addEventListener('touchend', function(ev) {
-		down = false;
-		ev.preventDefault();
-	}, false);
-	canvas.addEventListener('touchcancel', function(ev) {
-		down = false;
-		ev.preventDefault();
-	}, false);
+	var controls = new CameraControls(camera, canvas);
+
 
 	var t = 0;
 
 	function render() {
-		if (!down && !wasDown && paused) return;
+		if (!controls.down && !controls.wasDown && paused) return;
 		if (!paused) t += 16;
-		camera.position.set(Math.cos(theta)*Math.cos(alpha), Math.sin(alpha), Math.cos(alpha)*Math.sin(theta)).normalize().multiplyScalar(4.5);
-		camera.target = new THREE.Vector3(0, 0.75, 0);
-		camera.focusPoint = vec3(-1, 0.7, 0.2);
 		camera.lookAt(camera.target);
 		camera.updateProjectionMatrix();
 		camera.updateMatrixWorld();
 
 		var canvasSize = parseInt(window.canvasSize.value);
 		var AA_SIZE = parseInt(window.aaSize.value);
-		if (down) {
+		if (controls.down) {
 			canvasSize = 50;
 			AA_SIZE = 1;
-			wasDown = true;
-		} else if (wasDown) {
-			wasDown = false;
+			controls.wasDown = true;
+		} else if (controls.wasDown) {
+			controls.wasDown = false;
 		}
 		var apertureSize = parseInt(window.apertureSize.value);
 		camera.apertureSize = Math.pow(1.33, -apertureSize);
