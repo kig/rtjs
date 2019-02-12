@@ -4,23 +4,22 @@ var Ray = function(o, d, time) {
 	this.transmit = vec3(1.0);
 	this.light = vec3(0.0);
 	this.time = time;
+	this.pathLength = 0;
 	this.bounce = 0;
+	this.finished = false;
 };
 
 var intersect = function(ray, scene) {
 	var minT = 1/0;
-	var obj = null;
+	var hit = null;
 	for (var i=0; i<scene.length; i++) {
 		var t = scene[i].intersect(ray);
-		if (t > 0 && t < minT) {
-			minT = t;
-			obj = scene[i];
+		if (t && t.distance < minT) {
+			minT = t.distance;
+			hit = t;
 		}
 	}
-	if (!obj) {
-		return null;
-	}
-	return {distance: minT, obj: obj};
+	return hit;
 };
 
 var setupRay = function(camera, x, y, w, h) {
@@ -43,9 +42,176 @@ var setupRay = function(camera, x, y, w, h) {
 	return ray;
 };
 
+var trace = function(rays, scene, console) {
+	var epsilon = 0.0001;
+	console.time("trace");
 
-var loader = new THREE.OBJLoader;
-loader.load('bunny.obj', function(bunny) {
+	console.log("Tracing " + rays.length + " primary rays");
+	var plane = new Plane(vec3(0,0,0), vec3(0,1,0), vec3(0.5));
+	var rayCount = 0;
+	var lastRayCount = rayCount;
+	for (var j=0; j<13; j++) {
+		for (var i=0; i<rays.length; i++) {
+			var r = rays[i];
+			if (r.finished) continue;
+			rayCount++;
+			var hit = scene.intersect(r);
+			var hit2 = plane.intersect(r);
+			if (hit2 && (!hit || hit2.distance < hit.distance)) {
+				hit = hit2;
+			}
+			if (hit) {
+				if (r.bounce < 12) {
+					r.o = add(r.o, mulS(r.d, hit.distance));
+					r.pathLength += hit.distance;
+					var c = hit.obj.color(r);
+					r.transmit = mul(r.transmit, c);
+					var nml = hit.obj.normal(r.o);
+					r.d = normalize(add(reflect(r.d, nml), mulS(vec3(Math.random()-.5, Math.random()-.5, 2*(Math.random()-.5)), 0.1)));
+					r.o = add(r.o, mulS(nml, epsilon));
+					r.bounce++;
+				} else {
+					var bg = mulS(vec3(0.6+sat(-r.d.y), 0.7, 0.8+(0.4*r.d.x)*abs(r.d.z)), 1);
+					bg = add(bg, mulS(vec3(10.0, 6.0, 4.0), 4*pow(sat(dot(r.d, normalize(vec3(6.0, 10.0, 8.0)))), 64.0) ));
+					bg = add(bg, mulS(vec3(3, 5, 7), abs(1-r.d.z)));
+					r.light = mulS(bg, 1-Math.exp(-r.pathLength/40));
+					r.finished = true;
+				}
+			} else {
+				var bg = mulS(vec3(0.6+sat(-r.d.y), 0.7, 0.8+(0.4*r.d.x)*abs(r.d.z)), 1);
+				bg = add(bg, mulS(vec3(10.0, 6.0, 4.0), 4*pow(sat(dot(r.d, normalize(vec3(6.0, 10.0, 8.0)))), 64.0) ));
+				bg = add(bg, mulS(vec3(3, 5, 7), abs(1-r.d.z)));
+				r.light = mix(add(r.light, mul(r.transmit, bg)), bg, 1-Math.exp(-r.pathLength/40));
+				r.finished = true;
+			}
+		}
+		console.log("Bounce " + j + ", traced " + (rayCount-lastRayCount));
+		lastRayCount = rayCount;
+	}
+
+	console.timeEnd("trace");
+
+	console.log("Traced " + rayCount + " rays");
+	return rayCount;
+};
+
+var cachedAcceleration = {};
+var getAcceleration = function(bunnyTris, scene, bvhWidth, acceleration, rays, cache, console) {
+	if (cache && cachedAcceleration[acceleration]) {
+		return cachedAcceleration[acceleration];
+	}
+
+	if (acceleration === 'PathCache') {
+		console.log("PathCache is a ray bounce processing baseline. It traces the scene using a BVH and stores the results. On the PathCache trace, it replays the results. Think of it as the optimal acceleration structure, getting the nearest intersecting object for a ray in O(1).");
+		console.time("PathCache build");
+		var bvh = new BVHNode(bunnyTris.concat(scene), bvhWidth);
+
+		trace(rays, bvh, {time:function(){}, timeEnd:function() {}, log:function(){}}, function(r, hit) {
+			if (!r.hits) {
+				r.hitIndex = 0;
+				r.hits = [];
+				r.oo = addS(r.o, 0);
+				r.od = addS(r.d, 0);
+			}
+			r.hits.push(hit);
+		});
+		rays.forEach(function(r) {
+			r.o = r.oo;
+			r.d = r.od;
+			r.light = vec3(0);
+			r.transmit = vec3(1);
+			r.finished = false;
+			r.bounce = 0;
+		});
+		var accel = {
+			intersect: function(r) {
+				return r.hits[r.hitIndex++];
+			}
+		};
+		console.timeEnd("PathCache build");
+	}
+
+	if (acceleration === 'VoxelGrid') {
+
+		console.time("voxelGrid build");
+
+		var size = sub(bunnyTris.bbox.max, bunnyTris.bbox.min);
+		var m = Math.max(size.x, size.y, size.z);
+		var voxelGrid = new VoxelGrid2(8, bunnyTris.bbox.min, vec3(m), 2, [6,8,4], 0);
+		for (var i = 0; i < bunnyTris.length; i++) {
+			voxelGrid.add(bunnyTris[i]);
+		}
+
+		console.timeEnd("voxelGrid build");
+
+		console.time("voxelGrid2 build");
+
+		var voxelGrid2 = new VoxelGrid2(16, vec3(-8.1,-0.1,-8.1), vec3(16.2), 0, [1], 0);
+		scene.forEach(function(o,i) {
+			voxelGrid2.add(o);
+		});
+
+		var accel = voxelGrid;
+		var x = {
+			intersect: function(r) {
+				var hit = voxelGrid.intersect(r);	
+				var hit1 = voxelGrid2.intersect(r);
+				if (!hit || (hit1 && hit1.distance < hit.distance)) {
+					hit = hit1;
+				}
+				return hit;
+			}
+		};
+
+		console.timeEnd("voxelGrid2 build");
+
+	} else if (acceleration === 'BeamSphere') {
+
+		window.console.time("BeamSphere build");
+
+		window.console.time("BeamSphere init");
+		var size = sub(bunnyTris.bbox.max, bunnyTris.bbox.min);
+		var accel = new BeamSphere(add(bunnyTris.bbox.min, mulS(size, 0.5)), 6);
+		window.console.timeEnd("BeamSphere init");
+
+		for (var i = 0; i < bunnyTris.length; i++) {
+			accel.add(bunnyTris[i]);
+		}
+
+		window.console.timeEnd("BeamSphere build");
+		window.console.log("Added triangles", BeamSphere.addedTriangles);
+
+	} else if (acceleration === 'BVH') {
+
+		console.time("BVH build");
+
+		var accel = new BVHNode(bunnyTris, bvhWidth);
+		// var bvh = new BVHNode(bunnyTris, bvhWidth);
+		// var objs = [];
+		// for (var i=0; i<1; i++) {
+		// 	var tn = new TransformNode(bvh);
+		// 	tn.transform.position.copy(randomVec3Unit());
+		// 	tn.transform.rotation.y = random() * 2 * Math.PI;
+		// 	tn.transform.updateMatrix();
+		// 	tn.transform.inverseMatrix = new THREE.Matrix4();
+		// 	tn.transform.inverseMatrix.getInverse(tn.transform.matrix);
+		// 	objs.push(tn);
+		// }
+		// var accel = new BVHNode(objs, 2);
+		// accel = bvh;
+
+		console.log("Built BVH, width", bvhWidth, "size", accel.subTreeSize);
+
+		console.timeEnd("BVH build");
+
+	}
+	if (cache) {
+		cachedAcceleration[acceleration] = accel;
+	}
+	return accel;
+};
+
+ObjParse.load('bunny.obj').then(function(bunny) {
 	var camera = new THREE.PerspectiveCamera(55, 1, 0.1, 100);
 	camera.target = new THREE.Vector3(0, 0.75, 0);
 	camera.focusPoint = vec3(-1, 0.7, 0.2);
@@ -62,10 +228,24 @@ loader.load('bunny.obj', function(bunny) {
 		new Sphere(vec3(2.5,1,1), 1, vec3(1.0, 0.7, 0.3))
 	];
 
-	bunny.children[0].geometry.computeBoundingBox();
-	var bbox = bunny.children[0].geometry.boundingBox;
-	var verts = bunny.children[0].geometry.attributes.position.array;
-	var normals = bunny.children[0].geometry.attributes.normal.array;
+	var verts = bunny.vertices;
+	var normals = bunny.normals;
+
+	var bbox = { 
+		min: vec3(Infinity),
+		max: vec3(-Infinity)
+	};
+	for (let i = 0; i < verts.length; i += 3) {
+		const x = verts[i];
+		const y = verts[i+1];
+		const z = verts[i+2];
+		if (x < bbox.min.x) bbox.min.x = x;
+		if (x > bbox.max.x) bbox.max.x = x;
+		if (y < bbox.min.y) bbox.min.y = y;
+		if (y > bbox.max.y) bbox.max.y = y;
+		if (z < bbox.min.z) bbox.min.z = z;
+		if (z > bbox.max.z) bbox.max.z = z;
+	}
 
 	var scale = 2.0 / (bbox.max.y - bbox.min.y);
 	var xOffset = -(bbox.max.x+bbox.min.x)/2;
@@ -80,9 +260,12 @@ loader.load('bunny.obj', function(bunny) {
 		verts[i+2] += zOffset;
 		verts[i+2] *= scale;
 	}
+	bbox.min = mulS(add(bbox.min, vec3(xOffset, yOffset, zOffset)), scale);
+	bbox.max = mulS(add(bbox.max, vec3(xOffset, yOffset, zOffset)), scale);
 
 	var bunnyTris = [];
 
+	var color = vec3(0.85, 0.53, 0.15);
 	for (var i = 0; i < verts.length; i += 3*3) {
 		var u = vec3(verts[i], verts[i+1], verts[i+2]);
 		var v = vec3(verts[i+3], verts[i+4], verts[i+5]);
@@ -90,8 +273,9 @@ loader.load('bunny.obj', function(bunny) {
 		var x = vec3(normals[i], normals[i+1], normals[i+2]);
 		var y = vec3(normals[i+3], normals[i+4], normals[i+5]);
 		var z = vec3(normals[i+6], normals[i+7], normals[i+8]);
-		bunnyTris.push(new Triangle([u,v,w], [x,y,z], add(vec3(0.8), mulS(absV(u.xxy),0.2))));
+		bunnyTris.push(new Triangle([u,v,w], [x,y,z], color));
 	}
+	bunnyTris.bbox = bbox;
 
 	for (var i=0; i<100; i++) {
 		var c = mulS(randomVec3Unit(), 4 + random() * 3);
@@ -117,8 +301,8 @@ loader.load('bunny.obj', function(bunny) {
 		}
 	};
 
-	var acceleration = "BVH";
-	var paused = false;
+	var acceleration = "VoxelGrid";
+	var paused = true;
 
 	window.useBVH.onclick = function() {
 		acceleration = "BVH";
@@ -130,11 +314,25 @@ loader.load('bunny.obj', function(bunny) {
 		controls.wasDown = true;
 	};
 
+	window.useBeamSphere.onclick = function() {
+		acceleration = "BeamSphere";
+		controls.wasDown = true;
+	};
+	
+	window.usePathCache.onclick = function() {
+		acceleration = "PathCache";
+		controls.wasDown = true;
+	};
+	
 	window.pauseButton.onclick = function() {
 		paused = !paused;
 	};
 
-	window.canvasSize.onchange = window.aaSize.onchange = window.apertureSize.onchange = function() {
+	window.canvasSize.onchange = 
+	window.aaSize.onchange = 
+	window.apertureSize.onchange =
+	window.bvhWidth.onchange = 
+	function() {
 		controls.wasDown = true;
 	};
 
@@ -144,7 +342,7 @@ loader.load('bunny.obj', function(bunny) {
 	var t = 0;
 
 	function render() {
-		if (!controls.down && !controls.wasDown && paused) return;
+		if (!controls.changed && !controls.down && !controls.wasDown && paused) return;
 		if (!paused) t += 16;
 		camera.lookAt(camera.target);
 		camera.updateProjectionMatrix();
@@ -152,15 +350,21 @@ loader.load('bunny.obj', function(bunny) {
 
 		var canvasSize = parseInt(window.canvasSize.value);
 		var AA_SIZE = parseInt(window.aaSize.value);
-		if (controls.down) {
+		if (controls.down || controls.changed) {
 			canvasSize = 50;
 			AA_SIZE = 1;
 			controls.wasDown = true;
+			controls.changed = false;
 		} else if (controls.wasDown) {
 			controls.wasDown = false;
 		}
 		var apertureSize = parseInt(window.apertureSize.value);
 		camera.apertureSize = Math.pow(1.33, -apertureSize);
+		if (apertureSize === 10) {
+			camera.apertureSize = 0;
+		}
+
+		var bvhWidth = parseInt(window.bvhWidth.value);
 
 		canvas.width = canvas.height = canvasSize;
 
@@ -168,45 +372,10 @@ loader.load('bunny.obj', function(bunny) {
 
 		window.debug.innerHTML = "";
 
-		scene.forEach(function(o,i) {
-		 	o.center = vec3(o.center.x, abs(sin(i + t/300))*o.radius*2 + o.radius, o.center.z);
-		 });
 
-		if (acceleration === 'VoxelGrid') {
-
-			(console || window.console).time("voxelGrid build");
-
-			var voxelGrid = new VoxelGrid2(8, vec3(-1.1,-0.1,-1.1), vec3(2.2), 1, 8);
-			bunnyTris.forEach(function(o) {
-				voxelGrid.add(o);
-			});
-
-			(console || window.console).timeEnd("voxelGrid build");
-
-			(console || window.console).time("voxelGrid2 build");
-
-			var voxelGrid2 = new VoxelGrid2(16, vec3(-8.1,-0.1,-8.1), vec3(16.2), 0, 1);
-			scene.forEach(function(o,i) {
-				voxelGrid2.add(o);
-			});
-
-			(console || window.console).timeEnd("voxelGrid2 build");
-
-		} else if (acceleration === 'BVH') {
-
-			(console || window.console).time("BVH build");
-
-			var bvh = new BVHNode(bunnyTris.concat(scene));
-			console.log("Built BVH, size", bvh.subTreeSize);
-
-			(console || window.console).timeEnd("BVH build");
-
-		}
-
-		console.time("trace");
+		(console || window.console).time("Create rays");
 
 		var rays = [];
-		var epsilon = 0.0001;
 
 		for (var y=0; y<canvasSize; y++) {
 			for (var x=0; x<canvasSize; x++) {
@@ -219,71 +388,46 @@ loader.load('bunny.obj', function(bunny) {
 			}
 		}
 
-		var plane = new Plane(vec3(0,0,0), vec3(0,1,0), vec3(0.5));
-		var rayCount = 0;
-		var lastRayCount = rayCount;
+		(console || window.console).timeEnd("Create rays");
+
+
+		scene.forEach(function(o,i) {
+		 	o.center = vec3(o.center.x, abs(sin(i + t/300))*o.radius*2 + o.radius, o.center.z);
+		});
+
+		var accel = getAcceleration(bunnyTris, scene, bvhWidth, acceleration, rays, true, console);
+
+
 		VoxelGrid.stepCount = 0;
 		VoxelGrid.cmpCount = 0;
+		BeamSphere.sphereTests = 0;
+		BeamSphere.beamTests = 0;
+		BeamSphere.primitiveTests = 0;
 		BVHNode.visitedCount = 0;
 		BVHNode.primitiveTests = 0;
-		console.log("Tracing " + rays.length + " primary rays");
-		for (var j=0; j<6; j++) {
-			for (var i=0; i<rays.length; i++) {
-				var r = rays[i];
-				if (r.finished) continue;
-				rayCount++;
-				if (acceleration === 'BVH') {
-					var hit = bvh.intersect(r);	
-				} else {
-					var hit = voxelGrid.intersect(r);	
-					var hit1 = voxelGrid2.intersect(r);
-					if (!hit || (hit1 && hit1.distance < hit.distance)) {
-						hit = hit1;
-					}
-				}
-				var hit2 = plane.intersect(r);
-				if (hit2 > 0 && (!hit || hit2 < hit.distance)) {
-					hit = {distance: hit2, obj: plane};
-				}
-				if (hit) {
-					if (r.bounce < 5) {
-						r.o = add(r.o, mulS(r.d, hit.distance));
-						var c = hit.obj.color(r);
-						r.transmit = mul(r.transmit, c);
-						var nml = hit.obj.normal(r.o);
-						r.d = normalize(reflect(r.d, nml));
-						r.o = add(r.o, mulS(r.d, epsilon));
-						r.bounce++;
-					} else {
-						r.finished = true;
-					}
-				} else {
-					var bg = mulS(vec3(0.4+sat(-r.d.y), 0.6, 0.8+sat(r.d.y)*abs(r.d.z)), 2);
-					bg = add(bg, mulS(vec3(10.0, 6.0, 4.0), pow(sat(dot(r.d, normalize(vec3(5.0, 15.0, 10.0)))), 64.0) ));
-					r.light = add(r.light, mul(r.transmit, bg));
-					r.finished = true;
-				}
-			}
-			console.log("Bounce " + j + ", traced " + (rayCount-lastRayCount));
-			lastRayCount = rayCount;
-		}
 
-		console.timeEnd("trace");
-
-		console.log("Traced " + rayCount + " rays");
-
+		var rayCount = trace(rays, accel, console);
 		
 		if (acceleration === 'VoxelGrid') {
 			console.log(VoxelGrid.stepCount, "VoxelGrid steps");
 			console.log(VoxelGrid.cmpCount, "VoxelGrid primitive intersection tests");
-			console.log(VoxelGrid.stepCount / rayCount, "VG steps per ray")
+			console.log(VoxelGrid.stepCount / rayCount, "VG steps per ray");
 			console.log(VoxelGrid.cmpCount / rayCount, "VG primitive intersection tests per ray");
+		}
+
+		if (acceleration === 'BeamSphere') {
+			console.log(BeamSphere.sphereTests, "BeamSphere sphere tests");
+			console.log(BeamSphere.beamTests, "BeamSphere beam tests");
+			console.log(BeamSphere.primitiveTests, "BeamSphere primitive intersection tests");
+			console.log(BeamSphere.sphereTests / rayCount, "BS sphere tests per ray");
+			console.log(BeamSphere.beamTests / rayCount, "BS beam tests per ray");
+			console.log(BeamSphere.primitiveTests / rayCount, "BS primitive intersection tests per ray");
 		}
 
 		if (acceleration === 'BVH') {
 			console.log(BVHNode.visitedCount, "BVH visited nodes");
 			console.log(BVHNode.primitiveTests, "BVH primitive intersection tests");
-			console.log(BVHNode.visitedCount / rayCount, "BVH nodes per ray")
+			console.log(BVHNode.visitedCount / rayCount, "BVH nodes per ray");
 			console.log(BVHNode.primitiveTests / rayCount, "BVH primitive intersection tests per ray");
 		}
 
@@ -292,7 +436,7 @@ loader.load('bunny.obj', function(bunny) {
 			for (var dy=0; dy<AA_SIZE; dy++) {
 				for (var dx=0; dx<AA_SIZE; dx++) {
 					var r = rays[i*AA_SIZE*AA_SIZE+dy*AA_SIZE+dx];
-					c = add(c, addS(neg(expV(neg(r.light))), 1));
+					c = add(c, addS(neg(expV(neg(mulS(r.light, 0.5)))), 1));
 				}
 			}
 			c = mulS(c, 1/(AA_SIZE*AA_SIZE));
@@ -312,4 +456,3 @@ loader.load('bunny.obj', function(bunny) {
 
 	requestAnimationFrame(tick);
 });
-

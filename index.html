@@ -19,6 +19,7 @@
 			}
 			#controls {
 				position: absolute;
+				box-sizing: border-box;
 				left: 0;
 				top: 100vw;
 				width: 100vw;
@@ -39,6 +40,8 @@
 		<div id="controls">
 			<button id="useBVH">BVH</button>
 			<button id="useVoxelGrid">VoxelGrid</button>
+			<button id="useBeamSphere">BeamSphere</button>
+			<button id="usePathCache">PathCache</button>
 			<button id="pauseButton">Pause</button>
 			<div>
 				Canvas size
@@ -50,7 +53,11 @@
 			</div>
 			<div>
 				Aperture size
-				<input type="range" min="0" max="9" step="1" value="2" id="apertureSize">
+				<input type="range" min="0" max="10" step="1" value="2" id="apertureSize">
+			</div>
+			<div>
+				BVH width
+				<input type="range" min="2" max="16" step="1" value="2" id="bvhWidth">
 			</div>
 			<div id="debug"></div>
 		</div>
@@ -58,15 +65,21 @@
 		<script src="lib/third_party/three.js"></script>
 		<script src="lib/third_party/OBJLoader.js"></script>
 
+		<script src="lib/objparse.js"></script>
+
 		<script src="lib/vec3.js"></script>
 		<script src="lib/cameracontrols.js"></script>
 
 		<script src="lib/primitives.js"></script>
 
+		<script src="lib/beamsphere.js"></script>
+
 		<script src="lib/voxelgrid.js"></script>
 		<script src="lib/voxelgrid_uint16.js"></script>
 
 		<script src="lib/bvh.js"></script>
+
+		<script src="lib/transformnode.js"></script>
 
 		<script src="raytracer.js"></script>
 
