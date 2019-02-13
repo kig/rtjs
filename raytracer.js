@@ -171,12 +171,15 @@ var getAcceleration = function(bunnyTris, scene, bvhWidth, acceleration, rays, c
 
 		window.console.time("BeamSphere init");
 		var size = sub(bunnyTris.bbox.max, bunnyTris.bbox.min);
-		var accel = new BeamSphere(add(bunnyTris.bbox.min, mulS(size, 0.5)), 6);
+		var mid = add(bunnyTris.bbox.min, mulS(size, 0.5));
+		var radius = length(size) / 2;
+		var accel = new BeamSphere(mid, radius, 5);
 		window.console.timeEnd("BeamSphere init");
 
 		for (var i = 0; i < bunnyTris.length; i++) {
 			accel.add(bunnyTris[i]);
 		}
+		accel.sort();
 
 		window.console.timeEnd("BeamSphere build");
 		window.console.log("Added triangles", BeamSphere.addedTriangles);
