@@ -148,7 +148,7 @@ var getAcceleration = function(bunnyTris, scene, bvhWidth, acceleration, rays, c
 
 		var size = sub(bunnyTris.bbox.max, bunnyTris.bbox.min);
 		var m = Math.max(size.x, size.y, size.z);
-		var voxelGrid = new VoxelGrid2(8, bunnyTris.bbox.min, vec3(m), 2, [6,8,4], 0);
+		var voxelGrid = new VoxelGrid2(8, bunnyTris.bbox.min, vec3(m), 1, [6,12], 0);
 		for (var i = 0; i < bunnyTris.length; i++) {
 			voxelGrid.add(bunnyTris[i]);
 		}
@@ -184,7 +184,7 @@ var getAcceleration = function(bunnyTris, scene, bvhWidth, acceleration, rays, c
 		var size = sub(bunnyTris.bbox.max, bunnyTris.bbox.min);
 		var mid = add(bunnyTris.bbox.min, mulS(size, 0.5));
 		var radius = length(size) / 2;
-		var accel = new BeamSphere(mid, radius, 8);
+		var accel = new BeamSphere(mid, radius, 9);
 		window.console.timeEnd("BeamSphere init");
 
 		for (var i = 0; i < bunnyTris.length; i++) {
