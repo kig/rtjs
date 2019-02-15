@@ -189,7 +189,7 @@ var getAcceleration = function(bunnyTris, scene, bvhWidth, acceleration, rays, c
 		var size = sub(bunnyTris.bbox.max, bunnyTris.bbox.min);
 		var mid = add(bunnyTris.bbox.min, mulS(size, 0.5));
 		var radius = length(size) / 2;
-		var accel = new BeamSphere(mid, radius, 8);
+		var accel = new BeamSphere(mid, radius, 5);
 		window.console.timeEnd("BeamSphere init");
 
 		for (var i = 0; i < bunnyTris.length; i++) {
