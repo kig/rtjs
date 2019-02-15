@@ -22,36 +22,47 @@ var intersect = function(ray, scene) {
 	return hit;
 };
 
-var setupRay = function(camera, x, y, w, h) {
-	var uv = new THREE.Vector2(x/w*2 - 1, y/h*2 - 1);
+const origin = new THREE.Vector3();
+const direction = new THREE.Vector3();
+const target = new THREE.Vector3();
+const diskPointV = new THREE.Vector3();
+const uv = new THREE.Vector2();
+var setupRay = function(ray, camera, x, y, w, h) {
+	uv.set(x/w*2 - 1, y/h*2 - 1);
 
-	var origin = new THREE.Vector3();
 	origin.setFromMatrixPosition( camera.matrixWorld );
 
-	var direction = new THREE.Vector3();
 	direction.set( uv.x, uv.y, 0.5 ).unproject( camera ).sub( origin ).normalize();
 
-	var target = new THREE.Vector3();
-	var focusDistance = origin.distanceTo(camera.focusPoint);
+	const focusDistance = origin.distanceTo(camera.focusPoint);
 	target.addVectors( origin, direction.multiplyScalar(focusDistance));
 
-	origin.add( new THREE.Vector3().copy(diskPoint()).multiplyScalar(camera.apertureSize).applyMatrix4(camera.matrixWorld) );
+	origin.add( diskPointInPlace(diskPointV).multiplyScalar(camera.apertureSize).applyMatrix4(camera.matrixWorld) );
 	direction.subVectors( target, origin ).normalize();
 
-	var ray = new Ray(vec3(origin.x, origin.y, origin.z), vec3(direction.x, direction.y, direction.z), 0);
-	return ray;
+	ray.o.x = origin.x;
+	ray.o.y = origin.y;
+	ray.o.z = origin.z;
+	ray.d.x = direction.x;
+	ray.d.y = direction.y;
+	ray.d.z = direction.z;
+	ray.transmit.x = ray.transmit.y = ray.transmit.z = 1;
+	ray.light.x = ray.light.y = ray.light.z = 0;
+	ray.pathLength = 0;
+	ray.bounce = 0;
+	ray.finished = false;
 };
 
-var trace = function(rays, scene, console) {
+var trace = function(rays, raysLength, scene, console) {
 	var epsilon = 0.0001;
 	console.time("trace");
 
-	console.log("Tracing " + rays.length + " primary rays");
+	console.log("Tracing " + raysLength + " primary rays");
 	var plane = new Plane(vec3(0,0,0), vec3(0,1,0), vec3(0.5));
 	var rayCount = 0;
 	var lastRayCount = rayCount;
 	for (var j=0; j<13; j++) {
-		for (var i=0; i<rays.length; i++) {
+		for (var i=0; i<raysLength; i++) {
 			var r = rays[i];
 			if (r.finished) continue;
 			rayCount++;
@@ -137,7 +148,7 @@ var getAcceleration = function(bunnyTris, scene, bvhWidth, acceleration, rays, c
 
 		var size = sub(bunnyTris.bbox.max, bunnyTris.bbox.min);
 		var m = Math.max(size.x, size.y, size.z);
-		var voxelGrid = new VoxelGrid2(8, bunnyTris.bbox.min, vec3(m), 2, [6,8,4], 0);
+		var voxelGrid = new VoxelGrid2(8, bunnyTris.bbox.min, vec3(m), 1, [6,12], 0);
 		for (var i = 0; i < bunnyTris.length; i++) {
 			voxelGrid.add(bunnyTris[i]);
 		}
@@ -173,7 +184,7 @@ var getAcceleration = function(bunnyTris, scene, bvhWidth, acceleration, rays, c
 		var size = sub(bunnyTris.bbox.max, bunnyTris.bbox.min);
 		var mid = add(bunnyTris.bbox.min, mulS(size, 0.5));
 		var radius = length(size) / 2;
-		var accel = new BeamSphere(mid, radius, 8);
+		var accel = new BeamSphere(mid, radius, 9);
 		window.console.timeEnd("BeamSphere init");
 
 		for (var i = 0; i < bunnyTris.length; i++) {
@@ -344,6 +355,8 @@ ObjParse.load('bunny.obj').then(function(bunny) {
 
 	var t = 0;
 
+	var rays = [];
+
 	function render() {
 		if (!controls.changed && !controls.down && !controls.wasDown && paused) return;
 		if (!paused) t += 16;
@@ -376,16 +389,21 @@ ObjParse.load('bunny.obj').then(function(bunny) {
 		window.debug.innerHTML = "";
 
 
+		const totalRayCount = canvasSize*canvasSize*AA_SIZE*AA_SIZE;
+		if (rays.length < totalRayCount) {
+			rays = [];
+			for (var i=0; i<totalRayCount; i++) {
+				rays[i] = new Ray(vec3(0), vec3(0), 0);
+			}
+		}
+
 		(console || window.console).time("Create rays");
 
-		var rays = [];
-
-		for (var y=0; y<canvasSize; y++) {
+		for (var y=0, i=0; y<canvasSize; y++) {
 			for (var x=0; x<canvasSize; x++) {
 				for (var dy=0; dy<AA_SIZE; dy++) {
-					for (var dx=0; dx<AA_SIZE; dx++) {
-						var r = setupRay(camera, x+dx/AA_SIZE, (canvasSize-y-1)+dy/AA_SIZE, canvasSize, canvasSize);
-						rays.push(r);
+					for (var dx=0; dx<AA_SIZE; dx++, i++) {
+						setupRay(rays[i], camera, x+dx/AA_SIZE, (canvasSize-y-1)+dy/AA_SIZE, canvasSize, canvasSize);
 					}
 				}
 			}
@@ -409,7 +427,7 @@ ObjParse.load('bunny.obj').then(function(bunny) {
 		BVHNode.visitedCount = 0;
 		BVHNode.primitiveTests = 0;
 
-		var rayCount = trace(rays, accel, console);
+		var rayCount = trace(rays, totalRayCount, accel, console);
 		
 		if (acceleration === 'VoxelGrid') {
 			console.log(VoxelGrid.stepCount, "VoxelGrid steps");
