@@ -235,7 +235,7 @@ var getAcceleration = function(bunnyTris, scene, bvhWidth, acceleration, rays, c
 	return accel;
 };
 
-ObjParse.load('dragon.obj').then(function(bunny) {
+ObjParse.load('bunny.obj').then(function(bunny) {
 	var camera = new THREE.PerspectiveCamera(55, 1, 0.1, 100);
 	camera.target = new THREE.Vector3(0, 0.75, 0);
 	camera.focusPoint = vec3(-1, 0.7, 0.2);
