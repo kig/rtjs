@@ -54,42 +54,34 @@ var setupRay = function(ray, camera, x, y, w, h) {
 };
 
 var trace = function(rays, raysLength, scene, console) {
-	var epsilon = 0.0001;
+	const epsilon = 0.0001;
 	console.time("trace");
 
 	console.log("Tracing " + raysLength + " primary rays");
-	var plane = new Plane(vec3(0,0,0), vec3(0,1,0), vec3(0.5));
-	var rayCount = 0;
-	var lastRayCount = rayCount;
-	for (var j=0; j<13; j++) {
-		for (var i=0; i<raysLength; i++) {
-			var r = rays[i];
+	const plane = new Plane(vec3(0,0,0), vec3(0,1,0), vec3(0.5));
+	let rayCount = 0;
+	let lastRayCount = rayCount;
+	for (let j=0; j<6; j++) {
+		for (let i=0; i<raysLength; i++) {
+			const r = rays[i];
 			if (r.finished) continue;
 			rayCount++;
-			var hit = scene.intersect(r);
-			var hit2 = plane.intersect(r);
+			let hit = scene.intersect(r);
+			const hit2 = plane.intersect(r);
 			if (hit2 && (!hit || hit2.distance < hit.distance)) {
 				hit = hit2;
 			}
 			if (hit) {
-				if (r.bounce < 12) {
-					r.o = add(r.o, mulS(r.d, hit.distance));
-					r.pathLength += hit.distance;
-					var c = hit.obj.color(r);
-					r.transmit = mul(r.transmit, c);
-					var nml = hit.obj.normal(r.o);
-					r.d = normalize(add(reflect(r.d, nml), mulS(vec3(Math.random()-.5, Math.random()-.5, 2*(Math.random()-.5)), 0.1)));
-					r.o = add(r.o, mulS(nml, epsilon));
-					r.bounce++;
-				} else {
-					var bg = mulS(vec3(0.6+sat(-r.d.y), 0.7, 0.8+(0.4*r.d.x)*abs(r.d.z)), 1);
-					bg = add(bg, mulS(vec3(10.0, 6.0, 4.0), 4*pow(sat(dot(r.d, normalize(vec3(6.0, 10.0, 8.0)))), 64.0) ));
-					bg = add(bg, mulS(vec3(3, 5, 7), abs(1-r.d.z)));
-					r.light = mulS(bg, 1-Math.exp(-r.pathLength/40));
-					r.finished = true;
-				}
+				r.o = add(r.o, mulS(r.d, hit.distance));
+				r.pathLength += hit.distance;
+				const c = hit.obj.color(r);
+				r.transmit = mul(r.transmit, c);
+				const nml = hit.obj.normal(r.o);
+				r.d = normalize(add(reflect(r.d, nml), mulS(vec3(Math.random()-.5, Math.random()-.5, 2*(Math.random()-.5)), 0.1)));
+				r.o = add(r.o, mulS(nml, epsilon));
+				r.bounce++;
 			} else {
-				var bg = mulS(vec3(0.6+sat(-r.d.y), 0.7, 0.8+(0.4*r.d.x)*abs(r.d.z)), 1);
+				let bg = mulS(vec3(0.6+sat(-r.d.y), 0.7, 0.8+(0.4*r.d.x)*abs(r.d.z)), 1);
 				bg = add(bg, mulS(vec3(10.0, 6.0, 4.0), 4*pow(sat(dot(r.d, normalize(vec3(6.0, 10.0, 8.0)))), 64.0) ));
 				bg = add(bg, mulS(vec3(3, 5, 7), abs(1-r.d.z)));
 				r.light = mix(add(r.light, mul(r.transmit, bg)), bg, 1-Math.exp(-r.pathLength/40));
@@ -98,6 +90,15 @@ var trace = function(rays, raysLength, scene, console) {
 		}
 		console.log("Bounce " + j + ", traced " + (rayCount-lastRayCount));
 		lastRayCount = rayCount;
+	}
+	for (let i=0; i<raysLength; i++) {
+		const r = rays[i];
+		if (r.finished) continue;
+		var bg = mulS(vec3(0.6+sat(-r.d.y), 0.7, 0.8+(0.4*r.d.x)*abs(r.d.z)), 1);
+		bg = add(bg, mulS(vec3(10.0, 6.0, 4.0), 4*pow(sat(dot(r.d, normalize(vec3(6.0, 10.0, 8.0)))), 64.0) ));
+		bg = add(bg, mulS(vec3(3, 5, 7), abs(1-r.d.z)));
+		r.light = mulS(bg, 1-Math.exp(-r.pathLength/40));
+		r.finished = true;
 	}
 
 	console.timeEnd("trace");
@@ -151,17 +152,22 @@ var getAcceleration = function(bunnyTris, scene, bvhWidth, acceleration, rays, c
 		var grid = [4,4,4];
 		if (bunnyTris.length < 10000) {
 			// Use low-res grid
-			grid = [8];
+			// Fastest JS exec: [64]
+			// Nice mix of VG steps + intersects: [4,4,4]
+			// + Fast JS exec: [8, 8]
+			grid = [8, 8];
 		}
-		var voxelGrid = new VoxelGrid3(8, bunnyTris.bbox.min, vec3(m), grid.length, grid, 0);
+		const voxelGrid = new VoxelGrid3(bunnyTris.bbox.min, vec3(m), grid, 0);
 		voxelGrid.addTriangles(bunnyTris);
 		// for (var i = 0; i < bunnyTris.length; i++) {
 		// 	voxelGrid.add(bunnyTris[i]);
 		// }
 
+		const blob = voxelGrid.serialize();
+		window.console.log(blob);
+		
 		var accel = voxelGrid;
-
-		window.console.log(voxelGrid.serialize());
+		// var accel = new SerializedVG(blob, bunnyTris[0].color);
 
 		console.timeEnd("voxelGrid build");
 
