@@ -149,7 +149,7 @@ var getAcceleration = function(bunnyTris, scene, bvhWidth, acceleration, rays, c
 
 		var size = sub(bunnyTris.bbox.max, bunnyTris.bbox.min);
 		var m = Math.max(size.x, size.y, size.z);
-		var grid = [4,4,4];
+		var grid = [8,4,4,4];
 		if (bunnyTris.length < 10000) {
 			// Use low-res grid
 			// Fastest JS exec: [64]
@@ -166,8 +166,8 @@ var getAcceleration = function(bunnyTris, scene, bvhWidth, acceleration, rays, c
 		const blob = voxelGrid.serialize();
 		window.console.log(blob);
 		
-		var accel = voxelGrid;
-		// var accel = new SerializedVG(blob, bunnyTris[0].color);
+		// var accel = voxelGrid;
+		var accel = new SerializedVG(blob, bunnyTris[0]._color);
 
 		console.timeEnd("voxelGrid build");
 
