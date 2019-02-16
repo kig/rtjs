@@ -153,33 +153,38 @@ var getAcceleration = function(bunnyTris, scene, bvhWidth, acceleration, rays, c
 			// Use low-res grid
 			grid = [8];
 		}
-		var voxelGrid = new VoxelGrid2(8, bunnyTris.bbox.min, vec3(m), grid.length, grid, 0);
-		for (var i = 0; i < bunnyTris.length; i++) {
-			voxelGrid.add(bunnyTris[i]);
-		}
+		var voxelGrid = new VoxelGrid3(8, bunnyTris.bbox.min, vec3(m), grid.length, grid, 0);
+		voxelGrid.addTriangles(bunnyTris);
+		// for (var i = 0; i < bunnyTris.length; i++) {
+		// 	voxelGrid.add(bunnyTris[i]);
+		// }
+
+		var accel = voxelGrid;
+
+		window.console.log(voxelGrid.serialize());
 
 		console.timeEnd("voxelGrid build");
 
-		console.time("voxelGrid2 build");
+		// console.time("voxelGrid2 build");
 
-		var voxelGrid2 = new VoxelGrid2(16, vec3(-8.1,-0.1,-8.1), vec3(16.2), 0, [1], 0);
-		scene.forEach(function(o,i) {
-			voxelGrid2.add(o);
-		});
+		// var voxelGrid2 = new VoxelGrid2(16, vec3(-8.1,-0.1,-8.1), vec3(16.2), 0, [1], 0);
+		// scene.forEach(function(o,i) {
+		// 	voxelGrid2.add(o);
+		// });
 
-		var accel = voxelGrid;
-		var x = {
-			intersect: function(r) {
-				var hit = voxelGrid.intersect(r);	
-				var hit1 = voxelGrid2.intersect(r);
-				if (!hit || (hit1 && hit1.distance < hit.distance)) {
-					hit = hit1;
-				}
-				return hit;
-			}
-		};
+		// var accel = voxelGrid;
+		// var x = {
+		// 	intersect: function(r) {
+		// 		var hit = voxelGrid.intersect(r);	
+		// 		var hit1 = voxelGrid2.intersect(r);
+		// 		if (!hit || (hit1 && hit1.distance < hit.distance)) {
+		// 			hit = hit1;
+		// 		}
+		// 		return hit;
+		// 	}
+		// };
 
-		console.timeEnd("voxelGrid2 build");
+		// console.timeEnd("voxelGrid2 build");
 
 	} else if (acceleration === 'BeamSphere') {
 
@@ -230,7 +235,7 @@ var getAcceleration = function(bunnyTris, scene, bvhWidth, acceleration, rays, c
 	return accel;
 };
 
-ObjParse.load('bunny.obj').then(function(bunny) {
+ObjParse.load('dragon.obj').then(function(bunny) {
 	var camera = new THREE.PerspectiveCamera(55, 1, 0.1, 100);
 	camera.target = new THREE.Vector3(0, 0.75, 0);
 	camera.focusPoint = vec3(-1, 0.7, 0.2);
