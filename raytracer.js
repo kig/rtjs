@@ -66,7 +66,7 @@ var trace = function(rays, raysLength, scene, console) {
 	const plane = new Plane(vec3(0,0,0), vec3(0,1,0), vec3(0.5));
 	let rayCount = 0;
 	let lastRayCount = rayCount;
-	for (let j=0; j<1; j++) {
+	for (let j=0; j<6; j++) {
 		for (let i=0; i<raysLength; i++) {
 			const r = rays[i];
 			if (r.finished) continue;

@@ -1,6 +1,7 @@
 // WebGL 2 shader to ray trace.
 
-sampler2D array;
+uniform sampler2D arrayTex;
+uniform float arrayTexWidth;
 
 struct Hit {
     float index;
@@ -12,6 +13,11 @@ struct Ray {
     vec3 d;
 };
 
+struct Array {
+    sampler2D data;
+    float width;
+}
+
 vec3 fromGrid(vec3 coord, float scale, vec3 origin) {
     return origin + (coord * scale);
 }
@@ -20,11 +26,45 @@ vec3 toGrid(vec3 point, float scale, vec3 origin) {
     return (point - origin) / scale;
 }
 
+float readFloat(Array array, float index) {
+    float v = floor(index / array.width);
+    float u = index - (v * array.width);
+    return texelFetch(array.data, vec2(u, v)).r;
+}
+
+vec3 readVec3(Array array, float index) {
+    return vec3(
+        readFloat(array, index),
+        readFloat(array, index + 1.0),
+        readFloat(array, index + 2.0)
+    );
+}
+
+void intersectBox(in Ray ray, in vec3 origin, in vec3 dims) {
+    vec3 bmin = origin;
+    vec3 bmax = origin + dims;
+	vec3 invD = 1.0 / ray.d;
+	vec3 t0 = (bmin - ray.o) * invD;
+	vec3 t1 = (bmax - ray.o) * invD;
+	vec3 swaps = (sign(invD) + 1.0) * 0.5;
+	vec3 swaps2 = 1.0 - swaps;
+	vec3 t0_ = t0 * swaps + t1 * swaps2;
+    vec3 t1_ = t0 * swaps2 + t1 * swaps;
+
+	var tmin = max(t0_.x, max(t0_.y, t0_.z));
+	var tmax = min(t1_.x, max(t1_.y, t1_.z));
+
+	if (tmax <= tmin) {
+		return -1;
+	}
+	return tmin;
+}
+
 void intersectTri(in Ray ray, in float triIndex, inout Hit closestHit) {
-        float off = 4 + triIndex * 18;
+        float off = 4.0 + triIndex * 18.0;
         vec3 v0 = readVec3(array, off);
-        vec3 e1 = readVec3(array, off+3);
-        vec3 e2 = readVec3(array, off+6);
+        vec3 e1 = readVec3(array, off+3.0);
+        vec3 e2 = readVec3(array, off+6.0);
 
         vec3 h = cross(ray.d, e2);
         float a = dot(e1, h);
@@ -62,238 +102,169 @@ void intersectTri(in Ray ray, in float triIndex, inout Hit closestHit) {
 
 
 void intersectTris(Ray ray, float coff, float childSize, inout Hit closestHit) {
-    for (float j = 0; j < childSize; j++) {
+    for (float j = 0.0; j < childSize; j++) {
         float triIndex = readFloat(array, coff + j);
-        if (triIndex < 0) {
+        if (triIndex < 0.0) {
             break;
         }
         intersectTri(ray, triIndex, closestHit);
     }
 }
 
-/*
+vec3 triNormal(vec3 point, float triIndex) {
+    float off = 4.0 + triIndex * 18.0;
 
-class SerializedVG {
-    constructor(vgFloat32Array, color) {
-        this._color = color;
-        this._array = vgFloat32Array;
-        this._hit = {
-            _color: color,
-            _index: 0,
-            _e1: vec3(),
-            _e2: vec3(),
-            _normals: [vec3(), vec3(), vec3()],
-            color: function (point) { return this._color },
-            normal: function (point) {
-                var u = dot(point, this._e1);
-                var v = dot(point, this._e2);
-                var n0 = this._normals[0];
-                var n1 = this._normals[1];
-                var n2 = this._normals[2];
-                return normalize(mix(mix(n0, n2, v), n1, u));
-            }
-        };
-    }
+    vec3 e1 = readVec3(array, off+3.0);
+    vec3 e2 = readVec3(array, off+6.0);
+    
+    vec3 u = dot(point, e1);
+    vec3 v = dot(point, e2);
+    vec3 n0 = readVec3(array, off+9.0);
+    vec3 n1 = readVec3(array, off+12.0);
+    vec3 n2 = readVec3(array, off+15.0);
 
-    intersect(ray) {
-        // Step through the voxel grid
-        // On encountering a non-negative node,
-        // look it up and intersect against it.
-
-        // Do intersect against top-level VG bbox
-
-        // Load _box from _array.
-        // Add _box to _array.
-
-
-        const headOff = this._array[0] * 18 + 4;
-        const origin = vec3(
-            this._array[headOff],
-            this._array[headOff + 1],
-            this._array[headOff + 2]
-        );
-        const size = this._array[headOff + 3];
-        const dims = vec3(
-            this._array[headOff + 4],
-            this._array[headOff + 5],
-            this._array[headOff + 6]
-        );
-        const childCount = this._array[headOff + 7];
-        const box = new Box(origin, add(origin, dims));
-        const scale = dims.x / size;
-        const voxelsOff = headOff + 8;
-        const childIndexOff = voxelsOff + size * size * size;
-        const childOff = childIndexOff + childCount;
-
-        const t = box.intersect(ray);
-        if (t === null) {
-            return null;
-        }
-
-        // Map hit to voxel coordinates
-        const tray = new Ray(ray.o, ray.d, ray.time);
-        tray.o = add(tray.o, mulS(tray.d, t.distance + scale * 0.0001));
-
-        const cf = this.toGrid(tray.o, scale, origin);
-        const c = floorV(cf);
-
-        const deltaDist = vec3();
-        const step = sign(ray.d);
-        deltaDist.x = length(mulS(ray.d, 1 / ray.d.x));
-        deltaDist.y = length(mulS(ray.d, 1 / ray.d.y));
-        deltaDist.z = length(mulS(ray.d, 1 / ray.d.z));
-        const next = mul(add(maxV(vec3(0), step), add(mulS(mul(step, cf), -1), mul(step, c))), deltaDist);
-
-        var ci = c.z * size * size + c.y * size + c.x;
-
-        const closestHit = { index: -1, distance: Infinity };
-
-        // Step through the grid while we're inside it
-        while (!(c.x < 0 || c.y < 0 || c.z < 0 || c.x >= size || c.y >= size || c.z >= size)) {
-            VoxelGrid.stepCount++;
-            const vi = this._array[voxelsOff + ci];
-            if (vi > 0) {
-                const coff = childOff + this._array[childIndexOff + vi - 1];
-                this.intersectLevel2(ray, coff, closestHit);
-                if (closestHit.index >= 0) {
-                    break;
-                }
-            }
-            if (next.x < next.y) {
-                if (next.x < next.z) {
-                    next.x += deltaDist.x;
-                    c.x += step.x;
-                    ci += step.x;
-                } else {
-                    next.z += deltaDist.z;
-                    c.z += step.z;
-                    ci += step.z * size * size;
-                }
-            } else if (next.y < next.z) {
-                next.y += deltaDist.y;
-                c.y += step.y;
-                ci += step.y * size;
-            } else {
-                next.z += deltaDist.z;
-                c.z += step.z;
-                ci += step.z * size * size;
-            }
-        }
-        if (closestHit.index >= 0) {
-            const hit = { obj: this._hit, distance: closestHit.distance };
-            const index = closestHit.index;
-            const off = 4 + index * 18;
-            this._hit._e1.x = this._array[off + 3];
-            this._hit._e1.y = this._array[off + 4];
-            this._hit._e1.z = this._array[off + 5];
-            this._hit._e2.x = this._array[off + 6];
-            this._hit._e2.y = this._array[off + 7];
-            this._hit._e2.z = this._array[off + 8];
-            this._hit._normals[0].x = this._array[off + 9];
-            this._hit._normals[0].y = this._array[off + 10];
-            this._hit._normals[0].z = this._array[off + 11];
-            this._hit._normals[1].x = this._array[off + 12];
-            this._hit._normals[1].y = this._array[off + 13];
-            this._hit._normals[1].z = this._array[off + 14];
-            this._hit._normals[2].x = this._array[off + 15];
-            this._hit._normals[2].y = this._array[off + 16];
-            this._hit._normals[2].z = this._array[off + 17];
-            return hit;
-        }
-        return null;
-    }
-
-    intersectLevel2(ray, coff, closestHit) {
-        // Step through the voxel grid
-        // On encountering a non-negative node,
-        // look it up and intersect against it.
-
-        // Do intersect against top-level VG bbox
-
-        // Load _box from _array.
-        // Add _box to _array.
-
-        const headOff = coff;
-        const origin = vec3(
-            this._array[headOff],
-            this._array[headOff + 1],
-            this._array[headOff + 2]
-        );
-        const size = this._array[headOff + 3];
-        const dims = vec3(
-            this._array[headOff + 4],
-            this._array[headOff + 5],
-            this._array[headOff + 6]
-        );
-        const childSize = this._array[headOff + 7];
-        const box = new Box(origin, add(origin, dims));
-        const scale = dims.x / size;
-        const voxelsOff = headOff + 8;
-        const childOff = voxelsOff + size * size * size;
-
-        const t = box.intersect(ray);
-        if (t === null) {
-            return null;
-        }
-
-        // Map hit to voxel coordinates
-        const tray = new Ray(ray.o, ray.d, ray.time);
-        tray.o = add(tray.o, mulS(tray.d, t.distance + scale * 0.0001));
-
-        const cf = this.toGrid(tray.o, scale, origin);
-        const c = floorV(cf);
-
-        const deltaDist = vec3();
-        const step = sign(ray.d);
-        deltaDist.x = length(mulS(ray.d, 1 / ray.d.x));
-        deltaDist.y = length(mulS(ray.d, 1 / ray.d.y));
-        deltaDist.z = length(mulS(ray.d, 1 / ray.d.z));
-        const next = mul(add(maxV(vec3(0), step), add(mulS(mul(step, cf), -1), mul(step, c))), deltaDist);
-
-        var ci = c.z * size * size + c.y * size + c.x;
-
-        // Step through the grid while we're inside it
-        while (!(c.x < 0 || c.y < 0 || c.z < 0 || c.x >= size || c.y >= size || c.z >= size)) {
-            VoxelGrid.stepCount++;
-            const vi = this._array[voxelsOff + ci];
-            if (vi > 0) {
-                const coff = childOff + (vi - 1) * childSize;
-                this.intersectTris(ray, coff, childSize, closestHit);
-                if (closestHit.index >= 0) {
-                    const px = floor((ray.o.x + ray.d.x * closestHit.distance - origin.x) / scale);
-                    const py = floor((ray.o.y + ray.d.y * closestHit.distance - origin.y) / scale);
-                    const pz = floor((ray.o.z + ray.d.z * closestHit.distance - origin.z) / scale);
-                    if (px === c.x && py === c.y && pz === c.z) {
-                        return;
-                    }
-                }
-            }
-            if (next.x < next.y) {
-                if (next.x < next.z) {
-                    next.x += deltaDist.x;
-                    c.x += step.x;
-                    ci += step.x;
-                } else {
-                    next.z += deltaDist.z;
-                    c.z += step.z;
-                    ci += step.z * size * size;
-                }
-            } else if (next.y < next.z) {
-                next.y += deltaDist.y;
-                c.y += step.y;
-                ci += step.y * size;
-            } else {
-                next.z += deltaDist.z;
-                c.z += step.z;
-                ci += step.z * size * size;
-            }
-        }
-    }
-
-
+    return normalize(mix(mix(n0, n2, v), n1, u));
 }
 
-*/
+
+void intersectLeafGrid(Ray ray, float headOff, inout Hit closestHit) {
+    vec3 origin = readVec3(array, headOff);
+    float size = readFloat(array, headOff + 3.0);
+    vec3 dims = readVec3(array, headOff + 4.0);
+    float childSize = readFloat(array, headOff + 7.0);
+    float scale = dims.x / size;
+    float voxelsOff = headOff + 8.0;
+    float childOff = voxelsOff + size * size * size;
+
+    float t = intersectBox(ray, origin, dims);
+    if (t < 0.0) {
+        return;
+    }
+
+    // Map hit to voxel coordinates
+    Ray tray = Ray(ray.o, ray.d);
+    tray.o = tray.o + (tray.d * t + scale * 0.0001);
+
+    vec3 cf = toGrid(tray.o, scale, origin);
+    vec3 c = floor(cf);
+
+    vec3 deltaDist = vec3(
+        length(ray.d / ray.d.x),
+        length(ray.d / ray.d.y),
+        length(ray.d / ray.d.z)
+    );
+    vec3 cstep = sign(ray.d);
+    vec3 next = (max(vec3(0.0), cstep) + cstep * (c - cf)) * deltaDist;
+
+    float ci = c.z * size * size + c.y * size + c.x;
+
+    // Step through the grid while we're inside it
+    for (float i = 0.0; i < 3.0*size; i++) {
+        if (c.x < 0.0 || c.y < 0.0 || c.z < 0.0 || c.x >= size || c.y >= size || c.z >= size) {
+            return;
+        }
+        float vi = readFloat(array, voxelsOff + ci);
+        if (vi > 0.0) {
+            float coff = childOff + (vi - 1.0) * childSize;
+            intersectTris(ray, coff, childSize, closestHit);
+            if (closestHit.index >= 0.0) {
+                vec3 p = toGrid(ray.o + ray.d * closestHit.distance);
+                if (all(equal(p, c))) {
+                    return;
+                }
+            }
+        }
+        if (next.x < next.y) {
+            if (next.x < next.z) {
+                next.x += deltaDist.x;
+                c.x += cstep.x;
+                ci += cstep.x;
+            } else {
+                next.z += deltaDist.z;
+                c.z += cstep.z;
+                ci += cstep.z * size * size;
+            }
+        } else if (next.y < next.z) {
+            next.y += deltaDist.y;
+            c.y += cstep.y;
+            ci += cstep.y * size;
+        } else {
+            next.z += deltaDist.z;
+            c.z += cstep.z;
+            ci += cstep.z * size * size;
+        }
+    }
+}
+
+
+void intersectNodeGrid(Ray ray, inout Hit closestHit) {
+    float headOff = 18.0 * readFloat(array, 0) + 4;
+
+    vec3 origin = readVec3(array, headOff);
+    float size = readFloat(array, headOff + 3.0);
+    vec3 dims = readVec3(array, headOff + 4.0);
+    float childSize = readFloat(array, headOff + 7.0);
+    float scale = dims.x / size;
+    float voxelsOff = headOff + 8.0;
+    float childOff = voxelsOff + size * size * size;
+
+    float t = intersectBox(ray, origin, dims);
+    if (t < 0.0) {
+        return;
+    }
+
+    // Map hit to voxel coordinates
+    Ray tray = Ray(ray.o, ray.d);
+    tray.o = tray.o + (tray.d * t + scale * 0.0001);
+
+    vec3 cf = toGrid(tray.o, scale, origin);
+    vec3 c = floor(cf);
+
+    vec3 deltaDist = vec3(
+        length(ray.d / ray.d.x),
+        length(ray.d / ray.d.y),
+        length(ray.d / ray.d.z)
+    );
+    vec3 cstep = sign(ray.d);
+    vec3 next = (max(vec3(0.0), cstep) + cstep * (c - cf)) * deltaDist;
+
+    float ci = c.z * size * size + c.y * size + c.x;
+
+    // Step through the grid while we're inside it
+    for (float i = 0.0; i < 3.0*size; i++) {
+        if (c.x < 0.0 || c.y < 0.0 || c.z < 0.0 || c.x >= size || c.y >= size || c.z >= size) {
+            return;
+        }
+        float vi = readFloat(array, voxelsOff + ci);
+        if (vi > 0.0) {
+            float coff = childOff + (vi - 1.0) * childSize;
+            intersectLeafGrid(ray, coff, closestHit);
+            if (closestHit.index >= 0.0) {
+                return;
+            }
+        }
+        if (next.x < next.y) {
+            if (next.x < next.z) {
+                next.x += deltaDist.x;
+                c.x += cstep.x;
+                ci += cstep.x;
+            } else {
+                next.z += deltaDist.z;
+                c.z += cstep.z;
+                ci += cstep.z * size * size;
+            }
+        } else if (next.y < next.z) {
+            next.y += deltaDist.y;
+            c.y += cstep.y;
+            ci += cstep.y * size;
+        } else {
+            next.z += deltaDist.z;
+            c.z += cstep.z;
+            ci += cstep.z * size * size;
+        }
+    }
+}
+
 
 void main() {
     gl_FragColor = vec4(0,0,0,0);    
