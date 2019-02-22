@@ -7,18 +7,23 @@ var Ray = function(o, d, time) {
 	this.pathLength = 0;
 	this.bounce = 0;
 	this.finished = false;
+	this.lastTested = null;
 };
 
 var intersect = function(ray, scene) {
 	var minT = 1/0;
 	var hit = null;
 	for (var i=0; i<scene.length; i++) {
-		var t = scene[i].intersect(ray);
-		if (t && t.distance < minT) {
-			minT = t.distance;
-			hit = t;
+		const obj = scene[i];
+		if (obj !== ray.lastTested) {
+			const t = obj.intersect(ray);
+			if (t && t.distance < minT) {
+				minT = t.distance;
+				hit = t;
+			}
 		}
 	}
+	ray.lastTested = hit;
 	return hit;
 };
 
@@ -61,7 +66,7 @@ var trace = function(rays, raysLength, scene, console) {
 	const plane = new Plane(vec3(0,0,0), vec3(0,1,0), vec3(0.5));
 	let rayCount = 0;
 	let lastRayCount = rayCount;
-	for (let j=0; j<6; j++) {
+	for (let j=0; j<1; j++) {
 		for (let i=0; i<raysLength; i++) {
 			const r = rays[i];
 			if (r.finished) continue;
@@ -149,13 +154,13 @@ var getAcceleration = function(bunnyTris, scene, bvhWidth, acceleration, rays, c
 
 		var size = sub(bunnyTris.bbox.max, bunnyTris.bbox.min);
 		var m = Math.max(size.x, size.y, size.z);
-		var grid = [8,4,4,4];
+		var grid = [4,8,4,4];
 		if (bunnyTris.length < 10000) {
 			// Use low-res grid
-			// Fastest JS exec: [64]
+			// Fastest JS exec: [32]
 			// Nice mix of VG steps + intersects: [4,4,4]
 			// + Fast JS exec: [8, 8]
-			grid = [8, 8];
+			grid = [32];
 		}
 		const voxelGrid = new VoxelGrid3(bunnyTris.bbox.min, vec3(m), grid, 0);
 		voxelGrid.addTriangles(bunnyTris);
@@ -164,10 +169,10 @@ var getAcceleration = function(bunnyTris, scene, bvhWidth, acceleration, rays, c
 		// }
 
 		const blob = voxelGrid.serialize();
-		window.console.log(blob);
-		
+		// window.console.log(blob);
+		// voxelGrid.createShortCuts();
 		// var accel = voxelGrid;
-		var accel = new SerializedVG(blob, bunnyTris[0]._color);
+		var accel = new SerializedVG(blob, bunnyTris[0]._color, grid.length === 1);
 
 		console.timeEnd("voxelGrid build");
 
@@ -349,10 +354,10 @@ ObjParse.load('bunny.obj').then(function(bunny) {
 		controls.wasDown = true;
 	};
 	
-	window.usePathCache.onclick = function() {
-		acceleration = "PathCache";
-		controls.wasDown = true;
-	};
+	// window.usePathCache.onclick = function() {
+	// 	acceleration = "PathCache";
+	// 	controls.wasDown = true;
+	// };
 	
 	window.pauseButton.onclick = function() {
 		paused = !paused;
