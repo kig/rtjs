@@ -43,7 +43,7 @@ vec3 diskPoint(in float seed) {
 }
 
 Hit setupHit() {
-	return Hit(-1.0, 1.0e9);
+	return Hit(-1, 1.0e9);
 }
 
 vec3 unproject(in vec3 v) {
@@ -74,12 +74,12 @@ Ray setupRay() {
 		vec3(1.0),
 		vec3(0.0),
 		0.0,
-		-1.0
+		-1
 	);
 }
 
-vec3 getColor(in Ray r, in float index) {
-	if (index < 0.0) {
+vec3 getColor(in Ray r, in int index) {
+	if (index < 0) {
 		return vec3(0.5);
 	} else {
 		return vec3(0.85, 0.53, 0.15);
@@ -92,7 +92,7 @@ void intersectPlane(in Ray ray, in Plane p, inout Hit hit) {
 		float dist = dot(p.normal, p.point - ray.o) / pd;
 		if (dist > 0.0) {
 			hit.distance = dist;
-			hit.index = -2.0;
+			hit.index = -2;
 		}
 	}
 }
@@ -110,7 +110,7 @@ void intersectSphere(in Ray ray, in vec3 p, in float r, inout Hit hit) {
 		return;
 	}
 	hit.distance = t;
-	hit.index = 0.0;
+	hit.index = -3;
 }
 
 vec3 trace(Array vgArray) {
@@ -118,7 +118,7 @@ vec3 trace(Array vgArray) {
 	Plane plane = Plane(vec3(0.0), vec3(0.0, 1.0, 0.0), vec3(0.5));
 	Ray r = setupRay();
 
-    float headOff = 18.0 * readFloat(vgArray, 0.0) + 4.0;
+    int headOff = 18 * readInt(vgArray, 0) + 4;
 
 	for (float j = 0.0; j < 6.0; j++) {
 		Hit hit = setupHit();
@@ -135,8 +135,8 @@ vec3 trace(Array vgArray) {
 			r.pathLength += hit.distance;
 			vec3 c = getColor(r, hit.index);
 			r.transmit = r.transmit * c;
-			vec3 nml = hit.index >= 0.0 ? triNormal(vgArray, r.o, hit.index) : plane.normal;
-			// vec3 nml = hit.index >= 0.0 ? normalize(r.o-vec3(0.0, 0.5, 0.0)) : plane.normal;
+			vec3 nml = hit.index >= 0 ? triNormal(vgArray, r.o, hit.index) : plane.normal;
+			// vec3 nml = hit.index >= 0 ? normalize(r.o-vec3(0.0, 0.5, 0.0)) : plane.normal;
 			r.d = normalize(reflect(r.d, nml)); // + randomVec3(r.o) * 0.1);
 			r.o = r.o + nml * epsilon;
 		} else {

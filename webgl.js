@@ -7,14 +7,12 @@ class WebGLTracer {
         const paddedVgArray = new Float32Array(8192 * 8192);
         paddedVgArray.set(vgArray);
         this.vgArray = paddedVgArray;
-        // for (var i=0; i<900; i++) { 
-        //     paddedVgArray[i*3 + 0] = 1.0;
-        //     paddedVgArray[i*3 + 1] = 0.0;
-        //     paddedVgArray[i*3 + 2] = 1.0;    
-        // }
-        this.vgTexture = new THREE.DataTexture( paddedVgArray, 1024, 1024, THREE.RedFormat, THREE.FloatType );
+        this.vgTexture = new THREE.DataTexture( paddedVgArray, 8192, 8192, THREE.RedFormat, THREE.FloatType );
         this.vgTexture.flipY = false;
         this.vgTexture.needsUpdate = true;
+        this.ivgTexture = new THREE.DataTexture( new Int32Array( paddedVgArray.buffer ), 8192, 8192, THREE.RedIntegerFormat, THREE.IntType );
+        this.ivgTexture.flipY = false;
+        this.ivgTexture.needsUpdate = true;
         this.renderer = new THREE.WebGLRenderer({ canvas, context });
         this.renderer.setSize(window.innerWidth*dpr, window.innerHeight*dpr);
         this.renderer.setClearColor(0x00ffff);
@@ -34,8 +32,9 @@ class WebGLTracer {
             uniforms: {
                 iTime: { value: 1.0 },
                 arrayTex: { value: this.vgTexture },
-                arrayTexWidth: { value: 1024 },
-                iResolution: { value: [window.innerWidth, window.innerHeight] },
+                iarrayTex: { value: this.ivgTexture },
+                arrayTexWidth: { value: 8192 },
+                iResolution: { value: [canvas.width, canvas.height] },
                 cameraFocusPoint: { value: camera.focusPoint },
                 focusDistance: { value: 1.0 },
                 cameraApertureSize: { value: 0.3 },
@@ -78,6 +77,7 @@ class WebGLTracer {
         this.scene.add(this.mesh);
 
         this.controls = new CameraControls(camera, canvas);
+        camera.positionOffset.y = 0.1;
         this.startTime = Date.now();
 
         window.onresize = () => {
@@ -92,8 +92,8 @@ class WebGLTracer {
         camera.updateMatrixWorld();
         camera.inverseProjectionMatrix.getInverse(camera.projectionMatrix);
         this.material.uniforms.iTime.value = (Date.now() - this.startTime) / 1000;
-        this.material.uniforms.iResolution.value[0] = window.innerWidth*dpr;
-        this.material.uniforms.iResolution.value[1] = window.innerHeight*dpr;
+        this.material.uniforms.iResolution.value[0] = this.renderer.domElement.width;
+        this.material.uniforms.iResolution.value[1] = this.renderer.domElement.height;
 
         this.renderer.render(this.scene, camera);
     }
