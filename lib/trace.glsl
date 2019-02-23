@@ -11,6 +11,8 @@ uniform float cameraApertureSize;
 
 uniform vec2 iResolution;
 
+uniform float iTime;
+
 const float SKY_DISTANCE = 1e6;
 
 struct Plane {
@@ -19,21 +21,21 @@ struct Plane {
 	vec3 color;
 };
 
-float InterleavedGradientNoise(vec2 xy) {
+float InterleavedGradientNoise(in vec2 xy) {
   return fract(52.9829189f
               * fract(xy.x * 0.06711056f
                    + xy.y * 0.00583715f));
 }
 
-float random(float seed) {
+float random(in float seed) {
 	return InterleavedGradientNoise(gl_FragCoord.xy + seed);
 }
 
-vec3 randomVec3(vec3 p) {
+vec3 randomVec3(in vec3 p) {
 	return vec3(random(p.x), random(p.y), random(p.z));
 }
 
-vec3 diskPoint(float seed) {
+vec3 diskPoint(in float seed) {
 	float a = random(seed);
 	float r = random(a);
 	float sr = sqrt(r);
@@ -44,12 +46,19 @@ Hit setupHit() {
 	return Hit(-1.0, 1.0e9);
 }
 
+vec3 unproject(in vec3 v) {
+	vec4 v1 = vec4(v, 1.0) * projectionMatrix;
+	vec4 v2 = v1 * viewMatrix;
+	return v2.xyz;
+}
+
 Ray setupRay() {
 	vec2 uv = (gl_FragCoord.xy / iResolution.xy) * 2.0 - 1.0;
 	uv.x *= iResolution.x / iResolution.y;
 
 	vec3 origin = cameraPosition;
-	vec3 direction = normalize( (projectionMatrix * viewMatrix * vec4(vec3(uv.xy, 0.5) - origin, 1.0)).xyz );
+	// vec3 direction = normalize (vec3(uv, 1.0) - cameraPosition);
+	vec3 direction = normalize( unproject(vec3(uv, 0.5)) - origin );
 
 	// Camera aperture simulation
 
@@ -69,7 +78,7 @@ Ray setupRay() {
 	);
 }
 
-vec3 getColor(Ray r, float index) {
+vec3 getColor(in Ray r, in float index) {
 	if (index < 0.0) {
 		return vec3(0.5);
 	} else {
@@ -77,14 +86,31 @@ vec3 getColor(Ray r, float index) {
 	}
 }
 
-void intersectPlane(Ray ray, Plane p, inout Hit hit) {
+void intersectPlane(in Ray ray, in Plane p, inout Hit hit) {
 	float pd = dot(p.normal, ray.d);
 	if (abs(pd) > 0.00001) {
 		float dist = dot(p.normal, p.point - ray.o) / pd;
 		if (dist > 0.0) {
 			hit.distance = dist;
+			hit.index = -2.0;
 		}
 	}
+}
+
+void intersectSphere(in Ray ray, in vec3 p, in float r, inout Hit hit) {
+	vec3 rc = ray.o - p; 
+	float c = dot(rc, rc) - r*r;
+	float b = dot(ray.d, rc);
+	float d = b*b - c;
+	if (d < 0.0) {
+		return;
+	}
+	float t = -b - sqrt(d);
+	if (t <= 0.0) {
+		return;
+	}
+	hit.distance = t;
+	hit.index = 0.0;
 }
 
 vec3 trace(Array vgArray) {
@@ -92,10 +118,13 @@ vec3 trace(Array vgArray) {
 	Plane plane = Plane(vec3(0.0), vec3(0.0, 1.0, 0.0), vec3(0.5));
 	Ray r = setupRay();
 
+    float headOff = 18.0 * readFloat(vgArray, 0.0) + 4.0;
+
 	for (float j = 0.0; j < 6.0; j++) {
 		Hit hit = setupHit();
 		Hit hit2 = setupHit();
-		//intersectGridLeaf(vgArray, r, 0.0, hit);
+		// intersectSphere(r, vec3(0.0, 0.5, 0.0), 0.5, hit);
+		intersectGridLeaf(vgArray, r, headOff, hit);
 		intersectPlane(r, plane, hit2);
 		if (hit2.distance < hit.distance) {
 			hit = hit2;
@@ -106,13 +135,14 @@ vec3 trace(Array vgArray) {
 			r.pathLength += hit.distance;
 			vec3 c = getColor(r, hit.index);
 			r.transmit = r.transmit * c;
-			vec3 nml = hit.index >= -1.0 ? triNormal(vgArray, r.o, hit.index) : plane.normal;
-			r.d = normalize(reflect(r.d, nml) + randomVec3(r.o) * 0.1);
+			vec3 nml = hit.index >= 0.0 ? triNormal(vgArray, r.o, hit.index) : plane.normal;
+			// vec3 nml = hit.index >= 0.0 ? normalize(r.o-vec3(0.0, 0.5, 0.0)) : plane.normal;
+			r.d = normalize(reflect(r.d, nml)); // + randomVec3(r.o) * 0.1);
 			r.o = r.o + nml * epsilon;
 		} else {
 			vec3 bg = vec3(0.6+clamp(-r.d.y, 0.0, 1.0), 0.7, 0.8+(0.4*r.d.x) * abs(r.d.z));
 			bg += vec3(10.0, 6.0, 4.0) * 4.0 * pow(clamp(dot(r.d, normalize(vec3(6.0, 10.0, 8.0))), 0.0, 1.0), 64.0);
-			//bg += vec3(3.0, 5.0, 7.0) * abs(1.0 - r.d.z);
+			bg += vec3(3.0, 5.0, 7.0) * abs(1.0 - r.d.z);
 			r.light = mix(r.light + (r.transmit * bg), bg, 1.0 - exp(-r.pathLength/40.0));
 			break;
 		}

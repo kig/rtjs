@@ -60,12 +60,12 @@ float intersectBox(in Ray ray, in vec3 origin, in vec3 dims) {
     vec3 t1_ = t0 * swaps2 + t1 * swaps;
 
     float tmin = max(t0_.x, max(t0_.y, t0_.z));
-    float tmax = min(t1_.x, max(t1_.y, t1_.z));
+    float tmax = min(t1_.x, min(t1_.y, t1_.z));
 
     if (tmax <= tmin) {
         return -1.0;
     }
-    return tmin;
+    return max(0.0, tmin);
 }
 
 void intersectTri(in Array array, in Ray ray, in float triIndex, inout Hit closestHit) {
@@ -170,7 +170,7 @@ void intersectGridLeaf(in Array array, in Ray ray, in float headOff, inout Hit c
 
     // Step through the grid while we're inside it
     for (float i = 0.0; i < 3.0*size; i++) {
-        if (c.x < 0.0 || c.y < 0.0 || c.z < 0.0 || c.x >= size || c.y >= size || c.z >= size) {
+        if (c.x < 0.0 || c.y < 0.0 || c.z < 0.0 || c.x > size || c.y > size || c.z > size) {
             return;
         }
         float vi = readFloat(array, voxelsOff + ci);
@@ -178,7 +178,7 @@ void intersectGridLeaf(in Array array, in Ray ray, in float headOff, inout Hit c
             float coff = childOff + (vi - 1.0) * childSize;
             intersectTris(array, ray, coff, childSize, closestHit);
             if (closestHit.index >= 0.0) {
-                vec3 p = toGrid(ray.o + ray.d * closestHit.distance, scale, origin);
+                vec3 p = floor(toGrid(ray.o + ray.d * closestHit.distance, scale, origin));
                 if (all(equal(p, c))) {
                     return;
                 }

@@ -1,23 +1,46 @@
+const dpr = window.devicePixelRatio || 1;
+
 class WebGLTracer {
     constructor(vgArray, traceGLSL) {
         var canvas = document.createElement( 'canvas' );
         var context = canvas.getContext( 'webgl2' );
-        this.vgArray = vgArray;
-        this.vgTexture = new THREE.DataTexture( vgArray, 2048, Math.ceil(vgArray.length / 2048), THREE.LuminosityType, THREE.FloatType );
+        const paddedVgArray = new Float32Array(2048 * 2048);
+        paddedVgArray.set(vgArray);
+        this.vgArray = paddedVgArray;
+        // for (var i=0; i<900; i++) { 
+        //     paddedVgArray[i*3 + 0] = 1.0;
+        //     paddedVgArray[i*3 + 1] = 0.0;
+        //     paddedVgArray[i*3 + 2] = 1.0;    
+        // }
+        this.vgTexture = new THREE.DataTexture( paddedVgArray, 2048, 2048, THREE.RedFormat, THREE.FloatType );
+        this.vgTexture.flipY = false;
+        this.vgTexture.needsUpdate = true;
         this.renderer = new THREE.WebGLRenderer({ canvas, context });
-        this.renderer.setSize(300, 300);
+        this.renderer.setSize(window.innerWidth*dpr, window.innerHeight*dpr);
         this.renderer.setClearColor(0x00ffff);
         this.renderer.clear();
 
+        var camera = new THREE.PerspectiveCamera(55, 1, 0.1, 100);
+        camera.target = new THREE.Vector3(0, 0.75, 0);
+        camera.focusPoint = vec3(-1, 0.7, 0.2);
+		camera.apertureSize = Math.pow(1.33, -3);
+        camera.inverseProjectionMatrix = new THREE.Matrix4()
+        camera.lookAt(camera.target);
+        camera.updateProjectionMatrix();
+        camera.updateMatrixWorld();
+        camera.inverseProjectionMatrix.getInverse(camera.projectionMatrix);        
+
         this.material = new THREE.ShaderMaterial({
             uniforms: {
-                time: { value: 1.0 },
+                iTime: { value: 1.0 },
                 arrayTex: { value: this.vgTexture },
                 arrayTexWidth: { value: 2048 },
-                iResolution: { value: new THREE.Vector2(this.renderer.width, this.renderer.height) },
-                cameraFocusPoint: { value: new THREE.Vector3() },
+                iResolution: { value: [window.innerWidth, window.innerHeight] },
+                cameraFocusPoint: { value: camera.focusPoint },
                 focusDistance: { value: 1.0 },
-                cameraApertureSize: { value: 0.3 }
+                cameraApertureSize: { value: 0.3 },
+                cameraMatrixWorld: { value: camera.matrixWorld },
+                cameraInverseProjectionMatrix: { value: camera.inverseProjectionMatrix }
             },
             vertexShader: `
             #version 300 es
@@ -48,20 +71,18 @@ class WebGLTracer {
         this.mesh.position.z = -0.5;
         this.mesh.rotation.y = Math.PI;
 
-        var camera = new THREE.PerspectiveCamera(55, 1, 0.1, 100);
-        camera.target = new THREE.Vector3(0, 0.75, 0);
-        camera.focusPoint = vec3(-1, 0.7, 0.2);
-        camera.positionOffset = new THREE.Vector3();
-		camera.apertureSize = Math.pow(1.33, -3);
-        camera.lookAt(camera.target);
-        camera.updateProjectionMatrix();
-        camera.updateMatrixWorld();
-    
         this.scene = new THREE.Scene();
         this.camera = camera;
 
         this.scene.add(this.camera);
         this.scene.add(this.mesh);
+
+        this.controls = new CameraControls(camera, canvas);
+        this.startTime = Date.now();
+
+        window.onresize = () => {
+            this.renderer.setSize(window.innerWidth*dpr, window.innerHeight*dpr);
+        }
     }
 
     render() {
@@ -69,8 +90,12 @@ class WebGLTracer {
         camera.lookAt(camera.target);
 		camera.updateProjectionMatrix();
         camera.updateMatrixWorld();
+        camera.inverseProjectionMatrix.getInverse(camera.projectionMatrix);
+        this.material.uniforms.iTime.value = (Date.now() - this.startTime) / 1000;
+        this.material.uniforms.iResolution.value[0] = window.innerWidth*dpr;
+        this.material.uniforms.iResolution.value[1] = window.innerHeight*dpr;
 
-        this.renderer.render(this.scene, this.camera);
+        this.renderer.render(this.scene, camera);
     }
 }
 
@@ -82,8 +107,14 @@ class WebGLTracer {
     const traceText = await traceRes.text();
     const bunnyVG = await bunnyRes.arrayBuffer();
 
-    const tracer = new WebGLTracer(bunnyVG, vgText + '\n' + traceText);
+    const tracer = new WebGLTracer(new Float32Array(bunnyVG), vgText + '\n' + traceText);
     tracer.render();
+
+    const tick = () => {
+        tracer.render();
+        requestAnimationFrame(tick);
+    }
+    tick();
 
     document.body.append(tracer.renderer.domElement);
 })();
