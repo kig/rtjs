@@ -27,20 +27,25 @@ float InterleavedGradientNoise(in vec2 xy) {
                    + xy.y * 0.00583715f));
 }
 
-float random(in float seed) {
-	return InterleavedGradientNoise(gl_FragCoord.xy + seed);
+float random(vec2 st) {
+    return fract(sin(dot(gl_FragCoord.xy + st.xy,
+                         vec2(12.9898,78.233)))*
+        43758.5453123);
 }
 
 vec3 randomVec3(in vec3 p) {
-	return vec3(random(p.x), random(p.y), random(p.z));
-}
-
-vec3 diskPoint(in float seed) {
-	float a = random(seed);
-	float r = random(a);
+	float a = random(p.xz);
+	float r = random(p.yx);
 	float sr = sqrt(r);
 	return vec3(cos(a) * sr, sin(a) * sr, 0.0);
 }
+
+// vec3 diskPoint(in float seed) {
+// 	float a = random(seed);
+// 	float r = random(a);
+// 	float sr = sqrt(r);
+// 	return vec3(cos(a) * sr, sin(a) * sr, 0.0);
+// }
 
 Hit setupHit() {
 	return Hit(-1, 1.0e9);
@@ -52,8 +57,8 @@ vec3 unproject(in vec3 v) {
 	return v2.xyz;
 }
 
-Ray setupRay() {
-	vec2 uv = (gl_FragCoord.xy / iResolution.xy) * 2.0 - 1.0;
+Ray setupRay(vec2 fragCoord) {
+	vec2 uv = (fragCoord.xy / iResolution.xy) * 2.0 - 1.0;
 	uv.x *= iResolution.x / iResolution.y;
 
 	vec3 origin = cameraPosition;
@@ -113,10 +118,10 @@ void intersectSphere(in Ray ray, in vec3 p, in float r, inout Hit hit) {
 	hit.index = -3;
 }
 
-vec3 trace(Array vgArray) {
+vec3 trace(Array vgArray, vec2 fragCoord) {
 	float epsilon = 0.0001;
 	Plane plane = Plane(vec3(0.0), vec3(0.0, 1.0, 0.0), vec3(0.5));
-	Ray r = setupRay();
+	Ray r = setupRay(fragCoord);
 
     int headOff = 18 * readInt(vgArray, 0) + 4;
 
@@ -137,7 +142,7 @@ vec3 trace(Array vgArray) {
 			r.transmit = r.transmit * c;
 			vec3 nml = hit.index >= 0 ? triNormal(vgArray, r.o, hit.index) : plane.normal;
 			// vec3 nml = hit.index >= 0 ? normalize(r.o-vec3(0.0, 0.5, 0.0)) : plane.normal;
-			r.d = normalize(reflect(r.d, nml)); // + randomVec3(r.o) * 0.1);
+			r.d = normalize(reflect(r.d, nml) + randomVec3(r.o) * 0.1);
 			r.o = r.o + nml * epsilon;
 		} else {
 			vec3 bg = vec3(0.6+clamp(-r.d.y, 0.0, 1.0), 0.7, 0.8+(0.4*r.d.x) * abs(r.d.z));

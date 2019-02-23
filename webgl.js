@@ -57,9 +57,14 @@ class WebGLTracer {
 
             void main() {
                 Array array = Array(arrayTexWidth);
-                vec3 c = trace(array);
-                c = -exp(-c * 0.5) + 1.0;
-                FragColor = vec4(c, 1.0);
+                vec3 sum = vec3(0.0);
+                for (float y = 0.0; y < 3.0; y++)
+                for (float x = 0.0; x < 3.0; x++) {
+                    vec3 c = trace(array, gl_FragCoord.xy + vec2(x,y) / 3.0);
+                    c = -exp(-c * 0.5) + 1.0;
+                    sum +=  c;
+                }
+                FragColor = vec4(sum / 9.0, 1.0);
             }
             `
         });
