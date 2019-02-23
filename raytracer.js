@@ -169,6 +169,10 @@ var getAcceleration = function(bunnyTris, scene, bvhWidth, acceleration, rays, c
 		// }
 
 		const blob = voxelGrid.serialize();
+		// var a = document.createElement('a');
+		// a.download = 'bunny.vg3';
+		// a.href = URL.createObjectURL(new Blob([ blob.buffer ]));
+		// a.click();
 		// window.console.log(blob);
 		// voxelGrid.createShortCuts();
 		// var accel = voxelGrid;

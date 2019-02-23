@@ -1,3 +1,8 @@
+#version 300 es
+
+precision highp float;
+precision highp int;
+
 // WebGL 2 shader to ray trace.
 
 uniform sampler2D arrayTex;
@@ -5,18 +10,21 @@ uniform float arrayTexWidth;
 
 struct Hit {
     float index;
-    float closestHit;
+    float distance;
 };
 
 struct Ray {
     vec3 o;
     vec3 d;
+    vec3 transmit;
+    vec3 light;
+    float pathLength;
+    float lastTested;
 };
 
 struct Array {
-    sampler2D data;
     float width;
-}
+};
 
 vec3 fromGrid(vec3 coord, float scale, vec3 origin) {
     return origin + (coord * scale);
@@ -29,7 +37,7 @@ vec3 toGrid(vec3 point, float scale, vec3 origin) {
 float readFloat(Array array, float index) {
     float v = floor(index / array.width);
     float u = index - (v * array.width);
-    return texelFetch(array.data, vec2(u, v)).r;
+    return texelFetch(arrayTex, ivec2(u, v), 0).r;
 }
 
 vec3 readVec3(Array array, float index) {
@@ -40,27 +48,27 @@ vec3 readVec3(Array array, float index) {
     );
 }
 
-void intersectBox(in Ray ray, in vec3 origin, in vec3 dims) {
+float intersectBox(in Ray ray, in vec3 origin, in vec3 dims) {
     vec3 bmin = origin;
     vec3 bmax = origin + dims;
-	vec3 invD = 1.0 / ray.d;
-	vec3 t0 = (bmin - ray.o) * invD;
-	vec3 t1 = (bmax - ray.o) * invD;
-	vec3 swaps = (sign(invD) + 1.0) * 0.5;
-	vec3 swaps2 = 1.0 - swaps;
-	vec3 t0_ = t0 * swaps + t1 * swaps2;
+    vec3 invD = 1.0 / ray.d;
+    vec3 t0 = (bmin - ray.o) * invD;
+    vec3 t1 = (bmax - ray.o) * invD;
+    vec3 swaps = (sign(invD) + 1.0) * 0.5;
+    vec3 swaps2 = 1.0 - swaps;
+    vec3 t0_ = t0 * swaps + t1 * swaps2;
     vec3 t1_ = t0 * swaps2 + t1 * swaps;
 
-	var tmin = max(t0_.x, max(t0_.y, t0_.z));
-	var tmax = min(t1_.x, max(t1_.y, t1_.z));
+    float tmin = max(t0_.x, max(t0_.y, t0_.z));
+    float tmax = min(t1_.x, max(t1_.y, t1_.z));
 
-	if (tmax <= tmin) {
-		return -1;
-	}
-	return tmin;
+    if (tmax <= tmin) {
+        return -1.0;
+    }
+    return tmin;
 }
 
-void intersectTri(in Ray ray, in float triIndex, inout Hit closestHit) {
+void intersectTri(in Array array, in Ray ray, in float triIndex, inout Hit closestHit) {
         float off = 4.0 + triIndex * 18.0;
         vec3 v0 = readVec3(array, off);
         vec3 e1 = readVec3(array, off+3.0);
@@ -74,7 +82,7 @@ void intersectTri(in Ray ray, in float triIndex, inout Hit closestHit) {
         }
 
         float f = 1.0 / a;
-        vec3 s = sub(ray.o, v0);
+        vec3 s = ray.o - v0;
         float u = f * dot(s, h);
 
         if (u < -0.00000001 || u > 1.00000001) {
@@ -101,24 +109,26 @@ void intersectTri(in Ray ray, in float triIndex, inout Hit closestHit) {
 }
 
 
-void intersectTris(Ray ray, float coff, float childSize, inout Hit closestHit) {
+void intersectTris(in Array array, Ray ray, in float coff, in float childSize, inout Hit closestHit) {
     for (float j = 0.0; j < childSize; j++) {
         float triIndex = readFloat(array, coff + j);
         if (triIndex < 0.0) {
             break;
         }
-        intersectTri(ray, triIndex, closestHit);
+        if (ray.lastTested != triIndex) {
+            intersectTri(array, ray, triIndex, closestHit);
+        }
     }
 }
 
-vec3 triNormal(vec3 point, float triIndex) {
+vec3 triNormal(in Array array, in vec3 point, in float triIndex) {
     float off = 4.0 + triIndex * 18.0;
 
     vec3 e1 = readVec3(array, off+3.0);
     vec3 e2 = readVec3(array, off+6.0);
     
-    vec3 u = dot(point, e1);
-    vec3 v = dot(point, e2);
+    float u = dot(point, e1);
+    float v = dot(point, e2);
     vec3 n0 = readVec3(array, off+9.0);
     vec3 n1 = readVec3(array, off+12.0);
     vec3 n2 = readVec3(array, off+15.0);
@@ -127,7 +137,7 @@ vec3 triNormal(vec3 point, float triIndex) {
 }
 
 
-void intersectLeafGrid(Ray ray, float headOff, inout Hit closestHit) {
+void intersectGridLeaf(in Array array, in Ray ray, in float headOff, inout Hit closestHit) {
     vec3 origin = readVec3(array, headOff);
     float size = readFloat(array, headOff + 3.0);
     vec3 dims = readVec3(array, headOff + 4.0);
@@ -142,7 +152,7 @@ void intersectLeafGrid(Ray ray, float headOff, inout Hit closestHit) {
     }
 
     // Map hit to voxel coordinates
-    Ray tray = Ray(ray.o, ray.d);
+    Ray tray = ray;
     tray.o = tray.o + (tray.d * t + scale * 0.0001);
 
     vec3 cf = toGrid(tray.o, scale, origin);
@@ -166,9 +176,9 @@ void intersectLeafGrid(Ray ray, float headOff, inout Hit closestHit) {
         float vi = readFloat(array, voxelsOff + ci);
         if (vi > 0.0) {
             float coff = childOff + (vi - 1.0) * childSize;
-            intersectTris(ray, coff, childSize, closestHit);
+            intersectTris(array, ray, coff, childSize, closestHit);
             if (closestHit.index >= 0.0) {
-                vec3 p = toGrid(ray.o + ray.d * closestHit.distance);
+                vec3 p = toGrid(ray.o + ray.d * closestHit.distance, scale, origin);
                 if (all(equal(p, c))) {
                     return;
                 }
@@ -197,8 +207,8 @@ void intersectLeafGrid(Ray ray, float headOff, inout Hit closestHit) {
 }
 
 
-void intersectNodeGrid(Ray ray, inout Hit closestHit) {
-    float headOff = 18.0 * readFloat(array, 0) + 4;
+void intersectGridNode(in Array array, in Ray ray, inout Hit closestHit) {
+    float headOff = 18.0 * readFloat(array, 0.0) + 4.0;
 
     vec3 origin = readVec3(array, headOff);
     float size = readFloat(array, headOff + 3.0);
@@ -214,7 +224,7 @@ void intersectNodeGrid(Ray ray, inout Hit closestHit) {
     }
 
     // Map hit to voxel coordinates
-    Ray tray = Ray(ray.o, ray.d);
+    Ray tray = ray;
     tray.o = tray.o + (tray.d * t + scale * 0.0001);
 
     vec3 cf = toGrid(tray.o, scale, origin);
@@ -238,7 +248,7 @@ void intersectNodeGrid(Ray ray, inout Hit closestHit) {
         float vi = readFloat(array, voxelsOff + ci);
         if (vi > 0.0) {
             float coff = childOff + (vi - 1.0) * childSize;
-            intersectLeafGrid(ray, coff, closestHit);
+            intersectGridLeaf(array, ray, coff, closestHit);
             if (closestHit.index >= 0.0) {
                 return;
             }
@@ -265,7 +275,3 @@ void intersectNodeGrid(Ray ray, inout Hit closestHit) {
     }
 }
 
-
-void main() {
-    gl_FragColor = vec4(0,0,0,0);    
-}
