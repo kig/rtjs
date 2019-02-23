@@ -262,7 +262,7 @@ var getAcceleration = function(bunnyTris, scene, bvhWidth, acceleration, rays, c
 	return accel;
 };
 
-ObjParse.load('dragon.obj').then(function(bunny) {
+ObjParse.load('bunny.obj').then(function(bunny) {
 // fetch('bunny.vg3').then(res => res.arrayBuffer()).then(function(ab) {
 // 	const f32 = new Float32Array(ab);
 // 	const accel = new SerializedVG(f32, vec3(0.85, 0.53, 0.15), true);
