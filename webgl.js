@@ -4,7 +4,7 @@ class WebGLTracer {
     constructor(vgArray, traceGLSL) {
         var canvas = document.createElement( 'canvas' );
         var context = canvas.getContext( 'webgl2' );
-        const paddedVgArray = new Float32Array(2048 * 2048);
+        const paddedVgArray = new Float32Array(8192 * 8192);
         paddedVgArray.set(vgArray);
         this.vgArray = paddedVgArray;
         // for (var i=0; i<900; i++) { 
@@ -12,7 +12,7 @@ class WebGLTracer {
         //     paddedVgArray[i*3 + 1] = 0.0;
         //     paddedVgArray[i*3 + 2] = 1.0;    
         // }
-        this.vgTexture = new THREE.DataTexture( paddedVgArray, 2048, 2048, THREE.RedFormat, THREE.FloatType );
+        this.vgTexture = new THREE.DataTexture( paddedVgArray, 1024, 1024, THREE.RedFormat, THREE.FloatType );
         this.vgTexture.flipY = false;
         this.vgTexture.needsUpdate = true;
         this.renderer = new THREE.WebGLRenderer({ canvas, context });
@@ -34,7 +34,7 @@ class WebGLTracer {
             uniforms: {
                 iTime: { value: 1.0 },
                 arrayTex: { value: this.vgTexture },
-                arrayTexWidth: { value: 2048 },
+                arrayTexWidth: { value: 1024 },
                 iResolution: { value: [window.innerWidth, window.innerHeight] },
                 cameraFocusPoint: { value: camera.focusPoint },
                 focusDistance: { value: 1.0 },

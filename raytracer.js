@@ -32,18 +32,29 @@ const direction = new THREE.Vector3();
 const target = new THREE.Vector3();
 const diskPointV = new THREE.Vector3();
 const uv = new THREE.Vector2();
+const inverseProjectionMatrix = new THREE.Matrix4();
+const matrixWorld = new THREE.Matrix4();
+
+var initRays = function(camera) {
+	origin.copy( camera.position );
+	inverseProjectionMatrix.getInverse( camera.projectionMatrix );
+	matrixWorld.copy( camera.matrixWorld );
+};
+
 var setupRay = function(ray, camera, x, y, w, h) {
 	uv.set(x/w*2 - 1, y/h*2 - 1);
 
-	origin.setFromMatrixPosition( camera.matrixWorld );
+	direction.set( uv.x, uv.y, 0.5 )
+		.applyMatrix4( inverseProjectionMatrix )
+		.applyMatrix4( matrixWorld )
+		.sub( origin )
+		.normalize();
 
-	direction.set( uv.x, uv.y, 0.5 ).unproject( camera ).sub( origin ).normalize();
+	// const focusDistance = origin.distanceTo(camera.focusPoint);
+	// target.addVectors( origin, direction.multiplyScalar(focusDistance));
 
-	const focusDistance = origin.distanceTo(camera.focusPoint);
-	target.addVectors( origin, direction.multiplyScalar(focusDistance));
-
-	origin.add( diskPointInPlace(diskPointV).multiplyScalar(camera.apertureSize).applyMatrix4(camera.matrixWorld) );
-	direction.subVectors( target, origin ).normalize();
+	// origin.add( diskPointInPlace(diskPointV).multiplyScalar(camera.apertureSize).applyMatrix4(camera.matrixWorld) );
+	// direction.subVectors( target, origin ).normalize();
 
 	ray.o.x = origin.x;
 	ray.o.y = origin.y;
@@ -82,7 +93,7 @@ var trace = function(rays, raysLength, scene, console) {
 				const c = hit.obj.color(r);
 				r.transmit = mul(r.transmit, c);
 				const nml = hit.obj.normal(r.o);
-				r.d = normalize(add(reflect(r.d, nml), mulS(vec3(Math.random()-.5, Math.random()-.5, 2*(Math.random()-.5)), 0.1)));
+				r.d = normalize(add(reflect(r.d, nml), mulS(vec3(Math.random()-.5, Math.random()-.5, 2*(Math.random()-.5)), 0.)));
 				r.o = add(r.o, mulS(nml, epsilon));
 				r.bounce++;
 			} else {
@@ -154,16 +165,17 @@ var getAcceleration = function(bunnyTris, scene, bvhWidth, acceleration, rays, c
 
 		var size = sub(bunnyTris.bbox.max, bunnyTris.bbox.min);
 		var m = Math.max(size.x, size.y, size.z);
-		var grid = [4,8,4,4];
+		var grid = [256];
 		if (bunnyTris.length < 10000) {
 			// Use low-res grid
 			// Fastest JS exec: [32]
 			// Nice mix of VG steps + intersects: [4,4,4]
 			// + Fast JS exec: [8, 8]
-			grid = [32];
+			grid = [64];
 		}
 		const voxelGrid = new VoxelGrid3(bunnyTris.bbox.min, vec3(m), grid, 0);
 		voxelGrid.addTriangles(bunnyTris);
+		// const voxelGrid = new VoxelGrid2(bunnyTris.bbox.min, vec3(m), grid, 0);
 		// for (var i = 0; i < bunnyTris.length; i++) {
 		// 	voxelGrid.add(bunnyTris[i]);
 		// }
@@ -250,18 +262,11 @@ var getAcceleration = function(bunnyTris, scene, bvhWidth, acceleration, rays, c
 	return accel;
 };
 
-ObjParse.load('bunny.obj').then(function(bunny) {
-	var camera = new THREE.PerspectiveCamera(55, 1, 0.1, 100);
-	camera.target = new THREE.Vector3(0, 0.75, 0);
-	camera.focusPoint = vec3(-1, 0.7, 0.2);
-	camera.positionOffset = new THREE.Vector3();
-	camera.lookAt(camera.target);
-	camera.updateProjectionMatrix();
-	camera.updateMatrixWorld();
+ObjParse.load('dragon.obj').then(function(bunny) {
+// fetch('bunny.vg3').then(res => res.arrayBuffer()).then(function(ab) {
+// 	const f32 = new Float32Array(ab);
+// 	const accel = new SerializedVG(f32, vec3(0.85, 0.53, 0.15), true);
 
-	var canvas = document.createElement('canvas');
-	document.body.appendChild(canvas);
-	var ctx = canvas.getContext('2d');
 
 	var scene = [
 		new Sphere(vec3(2.5,1,1), 1, vec3(1.0, 0.7, 0.3))
@@ -323,6 +328,18 @@ ObjParse.load('bunny.obj').then(function(bunny) {
 		var color = randomVec3Positive();
 		scene.push(new Sphere(c, r, color));
 	}
+
+	var camera = new THREE.PerspectiveCamera(55, 1, 0.1, 100);
+	camera.target = new THREE.Vector3(0, 0.75, 0);
+	camera.focusPoint = vec3(-1, 0.7, 0.2);
+	camera.positionOffset = new THREE.Vector3();
+	camera.lookAt(camera.target);
+	camera.updateProjectionMatrix();
+	camera.updateMatrixWorld();
+
+	var canvas = document.createElement('canvas');
+	document.body.appendChild(canvas);
+	var ctx = canvas.getContext('2d');
 
 	var console = {
 		timers: {},
@@ -424,6 +441,8 @@ ObjParse.load('bunny.obj').then(function(bunny) {
 
 		(console || window.console).time("Create rays");
 
+		initRays(camera);
+
 		for (var y=0, i=0; y<canvasSize; y++) {
 			for (var x=0; x<canvasSize; x++) {
 				for (var dy=0; dy<AA_SIZE; dy++) {
@@ -437,9 +456,9 @@ ObjParse.load('bunny.obj').then(function(bunny) {
 		(console || window.console).timeEnd("Create rays");
 
 
-		scene.forEach(function(o,i) {
-		 	o.center = vec3(o.center.x, abs(sin(i + t/300))*o.radius*2 + o.radius, o.center.z);
-		});
+		// scene.forEach(function(o,i) {
+		//  	o.center = vec3(o.center.x, abs(sin(i + t/300))*o.radius*2 + o.radius, o.center.z);
+		// });
 
 		var accel = getAcceleration(bunnyTris, scene, bvhWidth, acceleration, rays, true, console);
 

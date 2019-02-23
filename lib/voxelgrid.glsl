@@ -6,7 +6,8 @@ precision highp int;
 // WebGL 2 shader to ray trace.
 
 uniform sampler2D arrayTex;
-uniform float arrayTexWidth;
+uniform highp isampler2D iarrayTex;
+uniform int arrayTexWidth;
 
 struct Hit {
     float index;
@@ -23,7 +24,7 @@ struct Ray {
 };
 
 struct Array {
-    float width;
+    int width;
 };
 
 vec3 fromGrid(vec3 coord, float scale, vec3 origin) {
@@ -34,9 +35,15 @@ vec3 toGrid(vec3 point, float scale, vec3 origin) {
     return (point - origin) / scale;
 }
 
+int readInt(Array array, int index) {
+    int v = index / array.width;
+    int u = index - (v * array.width);
+    return texelFetch(iarrayTex, ivec2(u, v), 0).r;
+}
+
 float readFloat(Array array, float index) {
-    float v = floor(index / array.width);
-    float u = index - (v * array.width);
+    int v = int(index) / array.width;
+    int u = int(index)  - (v * array.width);
     return texelFetch(arrayTex, ivec2(u, v), 0).r;
 }
 
