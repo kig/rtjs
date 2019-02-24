@@ -177,7 +177,7 @@ void intersectGridLeaf(in Array array, in Ray ray, in int headOff, inout Hit clo
 
     // Step through the grid while we're inside it
     for (int i = 0; i < 3*size; i++) {
-        if (c.x < 0 || c.y < 0 || c.z < 0 || c.x >= size || c.y >= size || c.z >= size) {
+        if (c.x < 0 || c.y < 0 || c.z < 0 || c.x > size || c.y > size || c.z > size) {
             return;
         }
         int vi = readInt(array, voxelsOff + ci);

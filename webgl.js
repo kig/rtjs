@@ -20,14 +20,13 @@ class WebGLTracer {
         this.renderer.clear();
 
         var camera = new THREE.PerspectiveCamera(55, 1, 0.1, 100);
-        camera.target = new THREE.Vector3(0, 0.75, 0);
+        camera.target = new THREE.Vector3(0, 2.75, 0);
         camera.focusPoint = vec3(-1, 0.7, 0.2);
 		camera.apertureSize = Math.pow(1.33, -3);
-        camera.inverseProjectionMatrix = new THREE.Matrix4()
+        camera.inverseMatrix = new THREE.Matrix4()
         camera.lookAt(camera.target);
         camera.updateProjectionMatrix();
         camera.updateMatrixWorld();
-        camera.inverseProjectionMatrix.getInverse(camera.projectionMatrix);        
 
         this.material = new THREE.ShaderMaterial({
             uniforms: {
@@ -39,8 +38,7 @@ class WebGLTracer {
                 cameraFocusPoint: { value: camera.focusPoint },
                 focusDistance: { value: 1.0 },
                 cameraApertureSize: { value: 0.3 },
-                cameraMatrixWorld: { value: camera.matrixWorld },
-                cameraInverseProjectionMatrix: { value: camera.inverseProjectionMatrix }
+                cameraInverseMatrix: { value: camera.inverseMatrix }
             },
             vertexShader: `
             #version 300 es
@@ -75,6 +73,9 @@ class WebGLTracer {
             new THREE.PlaneGeometry(2,2,1),
             this.material
         );
+        this.material.depthTest = false;
+        this.material.depthWrite = false;
+        this.mesh.frustumCulled = false;
         this.mesh.position.z = -0.5;
         this.mesh.rotation.y = Math.PI;
 
@@ -98,7 +99,8 @@ class WebGLTracer {
         camera.lookAt(camera.target);
 		camera.updateProjectionMatrix();
         camera.updateMatrixWorld();
-        camera.inverseProjectionMatrix.getInverse(camera.projectionMatrix);
+        camera.inverseMatrix.getInverse(camera.projectionMatrix);
+        camera.inverseMatrix.multiplyMatrices(camera.matrixWorld, camera.inverseMatrix);
         this.material.uniforms.iTime.value = (Date.now() - this.startTime) / 1000;
         this.material.uniforms.iResolution.value[0] = this.renderer.domElement.width;
         this.material.uniforms.iResolution.value[1] = this.renderer.domElement.height;
@@ -119,6 +121,11 @@ class WebGLTracer {
     tracer.render();
 
     const tick = () => {
+
+        // tracer.camera.position.x = Math.cos(Date.now()/1000) * 15;
+        // tracer.camera.position.y = 9.0 + Math.cos(Date.now()/4531) * 2.4;
+        // tracer.camera.position.z = Math.sin(Date.now()/1000) * 15;
+        // tracer.camera.fov = 120;
         tracer.render();
         requestAnimationFrame(tick);
     }

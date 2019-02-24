@@ -1,9 +1,11 @@
 // uniform mat4 modelMatrix; // = object.matrixWorld
 // uniform mat4 modelViewMatrix; // = camera.matrixWorldInverse * object.matrixWorld
-uniform mat4 projectionMatrix; // = camera.projectionMatrix
+// uniform mat4 projectionMatrix; // = camera.projectionMatrix
 // uniform mat4 viewMatrix; // = camera.matrixWorldInverse
 // uniform mat3 normalMatrix; // = inverse transpose of modelViewMatrix
 // uniform vec3 cameraPosition; // = camera position in world space
+
+uniform mat4 cameraInverseMatrix;
 
 uniform vec3 cameraFocusPoint;
 uniform float focusDistance;
@@ -36,7 +38,7 @@ float random(vec2 st) {
 vec3 randomVec3(in vec3 p) {
 	float a = random(p.xz);
 	float r = random(p.yx);
-	float h = random(vec2(a,r)) * 2.0 - 1.0;
+	float h = random(p.zy) * 2.0 - 1.0;
 	float sr = sqrt(r);
 	return vec3(cos(a) * sr, sin(a) * sr, h);
 }
@@ -53,9 +55,8 @@ Hit setupHit() {
 }
 
 vec3 unproject(in vec3 v) {
-	vec4 v1 = vec4(v, 1.0) * projectionMatrix;
-	vec4 v2 = v1 * viewMatrix;
-	return v2.xyz;
+	vec4 v1 = cameraInverseMatrix * vec4(v, 1.0);
+	return v1.xyz;
 }
 
 Ray setupRay(vec2 fragCoord) {
@@ -63,8 +64,7 @@ Ray setupRay(vec2 fragCoord) {
 	uv.x *= iResolution.x / iResolution.y;
 
 	vec3 origin = cameraPosition;
-	// vec3 direction = normalize (vec3(uv, 1.0) - cameraPosition);
-	vec3 direction = normalize( unproject(vec3(uv, 0.5)) - origin );
+	vec3 direction = normalize( unproject(vec3(uv*4.0, 1.0)) - origin );
 
 	// Camera aperture simulation
 
@@ -126,6 +126,11 @@ vec3 trace(Array vgArray, vec2 fragCoord) {
 
     int headOff = 18 * readInt(vgArray, 0) + 4;
 
+	vec3 bg0 = vec3(0.6+clamp(-1.0, 0.0, 1.0), 0.7, 0.8+(0.4*0.0) * abs(0.0));
+	bg0 += vec3(10.0, 6.0, 4.0) * 4.0 * pow(clamp(dot(vec3(0.0, 1.0, 0.0), normalize(vec3(6.0, 10.0, 8.0))), 0.0, 1.0), 64.0);
+	bg0 += vec3(3.0, 5.0, 7.0) * abs(1.0 - 0.0);
+	bg0 *= 0.05;
+
 	for (float j = 0.0; j < 6.0; j++) {
 		Hit hit = setupHit();
 		Hit hit2 = setupHit();
@@ -135,23 +140,23 @@ vec3 trace(Array vgArray, vec2 fragCoord) {
 		if (hit2.distance < hit.distance) {
 			hit = hit2;
 		}
-		if (hit.distance < SKY_DISTANCE) {
-			r.lastTested = hit.index;
-			r.o = r.o + (r.d * hit.distance);
-			r.pathLength += hit.distance;
-			vec3 c = getColor(r, hit.index);
-			r.transmit = r.transmit * c;
-			vec3 nml = hit.index >= 0 ? triNormal(vgArray, r.o, hit.index) : plane.normal;
-			// vec3 nml = hit.index >= 0 ? normalize(r.o-vec3(0.0, 0.5, 0.0)) : plane.normal;
-			r.d = normalize(reflect(r.d, nml) + (abs(dot(r.d, nml)) * 0.1) * randomVec3(r.o+r.d));
-			r.o = r.o + nml * epsilon;
-		} else {
-			vec3 bg = vec3(0.6+clamp(-r.d.y, 0.0, 1.0), 0.7, 0.8+(0.4*r.d.x) * abs(r.d.z));
-			bg += vec3(10.0, 6.0, 4.0) * 4.0 * pow(clamp(dot(r.d, normalize(vec3(6.0, 10.0, 8.0))), 0.0, 1.0), 64.0);
-			bg += vec3(3.0, 5.0, 7.0) * abs(1.0 - r.d.z);
-			r.light = mix(r.light + (r.transmit * bg), bg, 1.0 - exp(-r.pathLength/40.0));
+		if (hit.distance >= SKY_DISTANCE) {
 			break;
 		}
+		r.lastTested = hit.index;
+		r.o = r.o + (r.d * hit.distance);
+		r.pathLength += hit.distance;
+		r.light += r.transmit * (1.0-exp(-hit.distance/40.0)) * bg0;
+		vec3 c = getColor(r, hit.index);
+		r.transmit = r.transmit * c;
+		vec3 nml = hit.index >= 0 ? triNormal(vgArray, r.o, hit.index) : plane.normal;
+		// vec3 nml = hit.index >= 0 ? normalize(r.o-vec3(0.0, 0.5, 0.0)) : plane.normal;
+		r.d = normalize(normalize(reflect(r.d, nml)) + (abs(dot(r.d, nml)) * 0.1) * randomVec3(r.o+r.d));
+		r.o = r.o + nml * epsilon;
 	}
+	vec3 bg = vec3(0.6+clamp(-r.d.y, 0.0, 1.0), 0.7, 0.8+(0.4*r.d.x) * abs(r.d.z));
+	bg += vec3(10.0, 6.0, 4.0) * 4.0 * pow(clamp(dot(r.d, normalize(vec3(6.0, 10.0, 8.0))), 0.0, 1.0), 64.0);
+	bg += vec3(3.0, 5.0, 7.0) * abs(1.0 - r.d.z);
+	r.light = mix(r.light + (r.transmit * bg), bg, 1.0 - exp(-r.pathLength/40.0));
 	return r.light;
 }
