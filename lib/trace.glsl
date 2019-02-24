@@ -28,7 +28,7 @@ float InterleavedGradientNoise(in vec2 xy) {
 }
 
 float random(vec2 st) {
-    return fract(sin(dot(gl_FragCoord.xy + st.xy,
+    return fract(fract(dot(gl_FragCoord.xy/iResolution.xy + st.xy,
                          vec2(12.9898,78.233)))*
         43758.5453123);
 }
@@ -36,8 +36,9 @@ float random(vec2 st) {
 vec3 randomVec3(in vec3 p) {
 	float a = random(p.xz);
 	float r = random(p.yx);
+	float h = random(vec2(a,r)) * 2.0 - 1.0;
 	float sr = sqrt(r);
-	return vec3(cos(a) * sr, sin(a) * sr, 0.0);
+	return vec3(cos(a) * sr, sin(a) * sr, h);
 }
 
 // vec3 diskPoint(in float seed) {
@@ -142,7 +143,7 @@ vec3 trace(Array vgArray, vec2 fragCoord) {
 			r.transmit = r.transmit * c;
 			vec3 nml = hit.index >= 0 ? triNormal(vgArray, r.o, hit.index) : plane.normal;
 			// vec3 nml = hit.index >= 0 ? normalize(r.o-vec3(0.0, 0.5, 0.0)) : plane.normal;
-			r.d = normalize(reflect(r.d, nml) + randomVec3(r.o) * 0.1);
+			r.d = normalize(reflect(r.d, nml) + (abs(dot(r.d, nml)) * 0.1) * randomVec3(r.o+r.d));
 			r.o = r.o + nml * epsilon;
 		} else {
 			vec3 bg = vec3(0.6+clamp(-r.d.y, 0.0, 1.0), 0.7, 0.8+(0.4*r.d.x) * abs(r.d.z));

@@ -4,13 +4,14 @@ class WebGLTracer {
     constructor(vgArray, traceGLSL) {
         var canvas = document.createElement( 'canvas' );
         var context = canvas.getContext( 'webgl2' );
-        const paddedVgArray = new Float32Array(8192 * 8192);
+        const texSize = 1024;
+        const paddedVgArray = new Float32Array(texSize * texSize);
         paddedVgArray.set(vgArray);
         this.vgArray = paddedVgArray;
-        this.vgTexture = new THREE.DataTexture( paddedVgArray, 8192, 8192, THREE.RedFormat, THREE.FloatType );
+        this.vgTexture = new THREE.DataTexture( paddedVgArray, texSize, texSize, THREE.RedFormat, THREE.FloatType );
         this.vgTexture.flipY = false;
         this.vgTexture.needsUpdate = true;
-        this.ivgTexture = new THREE.DataTexture( new Int32Array( paddedVgArray.buffer ), 8192, 8192, THREE.RedIntegerFormat, THREE.IntType );
+        this.ivgTexture = new THREE.DataTexture( new Int32Array( paddedVgArray.buffer ), texSize, texSize, THREE.RedIntegerFormat, THREE.IntType );
         this.ivgTexture.flipY = false;
         this.ivgTexture.needsUpdate = true;
         this.renderer = new THREE.WebGLRenderer({ canvas, context });
@@ -33,7 +34,7 @@ class WebGLTracer {
                 iTime: { value: 1.0 },
                 arrayTex: { value: this.vgTexture },
                 iarrayTex: { value: this.ivgTexture },
-                arrayTexWidth: { value: 8192 },
+                arrayTexWidth: { value: texSize },
                 iResolution: { value: [canvas.width, canvas.height] },
                 cameraFocusPoint: { value: camera.focusPoint },
                 focusDistance: { value: 1.0 },
@@ -55,16 +56,18 @@ class WebGLTracer {
 
             out vec4 FragColor;    
 
+            #define AA_SIZE 1.0
+
             void main() {
                 Array array = Array(arrayTexWidth);
                 vec3 sum = vec3(0.0);
-                for (float y = 0.0; y < 3.0; y++)
-                for (float x = 0.0; x < 3.0; x++) {
-                    vec3 c = trace(array, gl_FragCoord.xy + vec2(x,y) / 3.0);
+                for (float y = 0.0; y < AA_SIZE; y++)
+                for (float x = 0.0; x < AA_SIZE; x++) {
+                    vec3 c = trace(array, gl_FragCoord.xy + vec2(x,y) / AA_SIZE);
                     c = -exp(-c * 0.5) + 1.0;
                     sum +=  c;
                 }
-                FragColor = vec4(sum / 9.0, 1.0);
+                FragColor = vec4(sum / (AA_SIZE*AA_SIZE), 1.0);
             }
             `
         });
