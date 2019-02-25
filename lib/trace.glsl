@@ -135,7 +135,7 @@ vec3 trace(Array vgArray, vec2 fragCoord) {
 		Hit hit = setupHit();
 		Hit hit2 = setupHit();
 		// intersectSphere(r, vec3(0.0, 0.5, 0.0), 0.5, hit);
-		intersectGridLeaf(vgArray, r, headOff, hit);
+		intersectGridNode(vgArray, r, headOff, hit);
 		intersectPlane(r, plane, hit2);
 		if (hit2.distance < hit.distance) {
 			hit = hit2;

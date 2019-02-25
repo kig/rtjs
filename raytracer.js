@@ -94,7 +94,7 @@ var trace = function(rays, raysLength, scene, console) {
 				r.pathLength += hit.distance;
 				const c = hit.obj.color(r);
 				r.transmit = mul(r.transmit, c);
-				const nml = hit.obj._nml;//.normal(r.o);
+				const nml = hit.obj.normal(r.o);
 				r.d = normalize(add(reflect(r.d, nml), mulS(vec3(Math.random()-.5, Math.random()-.5, 2*(Math.random()-.5)), 0.)));
 				r.o = add(r.o, mulS(nml, epsilon));
 				r.bounce++;
@@ -103,22 +103,22 @@ var trace = function(rays, raysLength, scene, console) {
 				bg = add(bg, mulS(vec3(10.0, 6.0, 4.0), 4*pow(sat(dot(r.d, normalize(vec3(6.0, 10.0, 8.0)))), 64.0) ));
 				bg = add(bg, mulS(vec3(3, 5, 7), abs(1-r.d.z)));
 				// r.light = add(r.light, mul(r.transmit, bg));
-				// r.light = mul(r.transmit, bg);
+				r.light = mul(r.transmit, bg);
 				r.finished = true;
 			}
 		}
 		console.log("Bounce " + j + ", traced " + (rayCount-lastRayCount));
 		lastRayCount = rayCount;
 	}
-	// for (let i=0; i<raysLength; i++) {
-	// 	const r = rays[i];
-	// 	if (r.finished) continue;
-	// 	var bg = mulS(vec3(0.6+sat(-r.d.y), 0.7, 0.8+(0.4*r.d.x)*abs(r.d.z)), 1);
-	// 	bg = add(bg, mulS(vec3(10.0, 6.0, 4.0), 4*pow(sat(dot(r.d, normalize(vec3(6.0, 10.0, 8.0)))), 64.0) ));
-	// 	bg = add(bg, mulS(vec3(3, 5, 7), abs(1-r.d.z)));
-	// 	r.light = mulS(bg, 1-Math.exp(-r.pathLength/40));
-	// 	r.finished = true;
-	// }
+	for (let i=0; i<raysLength; i++) {
+		const r = rays[i];
+		if (r.finished) continue;
+		var bg = mulS(vec3(0.6+sat(-r.d.y), 0.7, 0.8+(0.4*r.d.x)*abs(r.d.z)), 1);
+		bg = add(bg, mulS(vec3(10.0, 6.0, 4.0), 4*pow(sat(dot(r.d, normalize(vec3(6.0, 10.0, 8.0)))), 64.0) ));
+		bg = add(bg, mulS(vec3(3, 5, 7), abs(1-r.d.z)));
+		r.light = mulS(bg, 1-Math.exp(-r.pathLength/40));
+		r.finished = true;
+	}
 
 	console.timeEnd("trace");
 
@@ -177,24 +177,24 @@ var getAcceleration = function(bunnyTris, scene, bvhWidth, acceleration, rays, c
 			grid = [8,8];
 		}
 
-		// const voxelGrid = new VoxelGrid3(bunnyTris.bbox.min, vec3(m), grid, 0);
-		// voxelGrid.addTriangles(bunnyTris);
-		// const blob = voxelGrid.serialize();
+		const voxelGrid = new VoxelGrid3(bunnyTris.bbox.min, vec3(m), grid, 0);
+		voxelGrid.addTriangles(bunnyTris);
+		const blob = voxelGrid.serialize();
 		// var a = document.createElement('a');
 		// a.download = 'bunny.vg3';
 		// a.href = URL.createObjectURL(new Blob([ blob.buffer ]));
 		// a.click();
 		// window.console.log(blob);
 		// voxelGrid.createShortCuts();
-		// var accel = new SerializedVG(blob, bunnyTris[0]._color, grid.length === 1);
+		var accel = new SerializedVG(blob, bunnyTris[0]._color, grid.length === 1);
 
-		const voxelGrid = new VoxelGrid2(bunnyTris.bbox.min, vec3(m), grid, 0);
-		for (var i = 0; i < bunnyTris.length; i++) {
-			voxelGrid.add(bunnyTris[i]);
-		}
-		voxelGrid.prune();
-		console.log("VG pruned", VoxelGrid2.pruned);
-		var accel = voxelGrid;
+		// const voxelGrid = new VoxelGrid2(bunnyTris.bbox.min, vec3(m), grid, 0);
+		// for (var i = 0; i < bunnyTris.length; i++) {
+		// 	voxelGrid.add(bunnyTris[i]);
+		// }
+		// voxelGrid.prune();
+		// console.log("VG pruned", VoxelGrid2.pruned);
+		// var accel = voxelGrid;
 
 
 		console.timeEnd("voxelGrid build");
