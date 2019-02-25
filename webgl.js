@@ -1,4 +1,4 @@
-const dpr = window.devicePixelRatio || 1;
+const dpr = 1; //window.devicePixelRatio || 1;
 
 class WebGLTracer {
     constructor(vgArray, traceGLSL) {
