@@ -4,7 +4,12 @@ class WebGLTracer {
     constructor(vgArray, traceGLSL) {
         var canvas = document.createElement( 'canvas' );
         var context = canvas.getContext( 'webgl2' );
-        const texSize = 1024;
+        var texSize = Math.ceil(Math.sqrt(vgArray.length));
+        console.log(texSize);
+        if (texSize < 2048) {
+            texSize = Math.pow(2, Math.ceil(Math.log2(texSize)));
+        }
+        console.log(texSize);
         const paddedVgArray = new Float32Array(texSize * texSize);
         paddedVgArray.set(vgArray);
         this.vgArray = paddedVgArray;

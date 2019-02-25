@@ -38,20 +38,21 @@ const matrixWorld = new THREE.Matrix4();
 var initRays = function(camera) {
 	origin.copy( camera.position );
 	inverseProjectionMatrix.getInverse( camera.projectionMatrix );
-	matrixWorld.copy( camera.matrixWorld );
+	inverseProjectionMatrix.multiplyMatrices( camera.matrixWorld, inverseProjectionMatrix );
+	// matrixWorld.copy( camera.matrixWorld );
 };
 
 var setupRay = function(ray, camera, x, y, w, h) {
-	uv.set(x/w*2 - 1, y/h*2 - 1);
+	uv.set((x/w)*2 - 1, (y/h)*2 - 1);
 
-	direction.set( uv.x, uv.y, 0.5 )
+	direction.set( uv.x, uv.y, 1 )
 		.applyMatrix4( inverseProjectionMatrix )
-		.applyMatrix4( matrixWorld )
+		// .applyMatrix4( matrixWorld )
 		.sub( origin )
 		.normalize();
 
 	// const focusDistance = origin.distanceTo(camera.focusPoint);
-	// target.addVectors( origin, direction.multiplyScalar(focusDistance));
+	// target.addVectors( origin, direction.multiplyScalar(focusDistance) );
 
 	// origin.add( diskPointInPlace(diskPointV).multiplyScalar(camera.apertureSize).applyMatrix4(camera.matrixWorld) );
 	// direction.subVectors( target, origin ).normalize();
@@ -75,6 +76,7 @@ var trace = function(rays, raysLength, scene, console) {
 
 	console.log("Tracing " + raysLength + " primary rays");
 	const plane = new Plane(vec3(0,0,0), vec3(0,1,0), vec3(0.5));
+	plane._nml = plane._normal;
 	let rayCount = 0;
 	let lastRayCount = rayCount;
 	for (let j=0; j<6; j++) {
@@ -92,7 +94,7 @@ var trace = function(rays, raysLength, scene, console) {
 				r.pathLength += hit.distance;
 				const c = hit.obj.color(r);
 				r.transmit = mul(r.transmit, c);
-				const nml = hit.obj.normal(r.o);
+				const nml = hit.obj._nml;//.normal(r.o);
 				r.d = normalize(add(reflect(r.d, nml), mulS(vec3(Math.random()-.5, Math.random()-.5, 2*(Math.random()-.5)), 0.)));
 				r.o = add(r.o, mulS(nml, epsilon));
 				r.bounce++;
@@ -100,22 +102,23 @@ var trace = function(rays, raysLength, scene, console) {
 				let bg = mulS(vec3(0.6+sat(-r.d.y), 0.7, 0.8+(0.4*r.d.x)*abs(r.d.z)), 1);
 				bg = add(bg, mulS(vec3(10.0, 6.0, 4.0), 4*pow(sat(dot(r.d, normalize(vec3(6.0, 10.0, 8.0)))), 64.0) ));
 				bg = add(bg, mulS(vec3(3, 5, 7), abs(1-r.d.z)));
-				r.light = mix(add(r.light, mul(r.transmit, bg)), bg, 1-Math.exp(-r.pathLength/40));
+				// r.light = add(r.light, mul(r.transmit, bg));
+				// r.light = mul(r.transmit, bg);
 				r.finished = true;
 			}
 		}
 		console.log("Bounce " + j + ", traced " + (rayCount-lastRayCount));
 		lastRayCount = rayCount;
 	}
-	for (let i=0; i<raysLength; i++) {
-		const r = rays[i];
-		if (r.finished) continue;
-		var bg = mulS(vec3(0.6+sat(-r.d.y), 0.7, 0.8+(0.4*r.d.x)*abs(r.d.z)), 1);
-		bg = add(bg, mulS(vec3(10.0, 6.0, 4.0), 4*pow(sat(dot(r.d, normalize(vec3(6.0, 10.0, 8.0)))), 64.0) ));
-		bg = add(bg, mulS(vec3(3, 5, 7), abs(1-r.d.z)));
-		r.light = mulS(bg, 1-Math.exp(-r.pathLength/40));
-		r.finished = true;
-	}
+	// for (let i=0; i<raysLength; i++) {
+	// 	const r = rays[i];
+	// 	if (r.finished) continue;
+	// 	var bg = mulS(vec3(0.6+sat(-r.d.y), 0.7, 0.8+(0.4*r.d.x)*abs(r.d.z)), 1);
+	// 	bg = add(bg, mulS(vec3(10.0, 6.0, 4.0), 4*pow(sat(dot(r.d, normalize(vec3(6.0, 10.0, 8.0)))), 64.0) ));
+	// 	bg = add(bg, mulS(vec3(3, 5, 7), abs(1-r.d.z)));
+	// 	r.light = mulS(bg, 1-Math.exp(-r.pathLength/40));
+	// 	r.finished = true;
+	// }
 
 	console.timeEnd("trace");
 
@@ -165,30 +168,34 @@ var getAcceleration = function(bunnyTris, scene, bvhWidth, acceleration, rays, c
 
 		var size = sub(bunnyTris.bbox.max, bunnyTris.bbox.min);
 		var m = Math.max(size.x, size.y, size.z);
-		var grid = [256];
+		var grid = [4,8,4,4];
 		if (bunnyTris.length < 10000) {
 			// Use low-res grid
 			// Fastest JS exec: [32]
 			// Nice mix of VG steps + intersects: [4,4,4]
 			// + Fast JS exec: [8, 8]
-			grid = [64];
+			grid = [8,8];
 		}
-		const voxelGrid = new VoxelGrid3(bunnyTris.bbox.min, vec3(m), grid, 0);
-		voxelGrid.addTriangles(bunnyTris);
-		// const voxelGrid = new VoxelGrid2(bunnyTris.bbox.min, vec3(m), grid, 0);
-		// for (var i = 0; i < bunnyTris.length; i++) {
-		// 	voxelGrid.add(bunnyTris[i]);
-		// }
 
-		const blob = voxelGrid.serialize();
+		// const voxelGrid = new VoxelGrid3(bunnyTris.bbox.min, vec3(m), grid, 0);
+		// voxelGrid.addTriangles(bunnyTris);
+		// const blob = voxelGrid.serialize();
 		// var a = document.createElement('a');
 		// a.download = 'bunny.vg3';
 		// a.href = URL.createObjectURL(new Blob([ blob.buffer ]));
 		// a.click();
 		// window.console.log(blob);
 		// voxelGrid.createShortCuts();
-		// var accel = voxelGrid;
-		var accel = new SerializedVG(blob, bunnyTris[0]._color, grid.length === 1);
+		// var accel = new SerializedVG(blob, bunnyTris[0]._color, grid.length === 1);
+
+		const voxelGrid = new VoxelGrid2(bunnyTris.bbox.min, vec3(m), grid, 0);
+		for (var i = 0; i < bunnyTris.length; i++) {
+			voxelGrid.add(bunnyTris[i]);
+		}
+		voxelGrid.prune();
+		console.log("VG pruned", VoxelGrid2.pruned);
+		var accel = voxelGrid;
+
 
 		console.timeEnd("voxelGrid build");
 
