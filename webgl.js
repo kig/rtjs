@@ -25,7 +25,7 @@ class WebGLTracer {
         this.renderer.clear();
 
         var camera = new THREE.PerspectiveCamera(55, 1, 0.1, 100);
-        camera.target = new THREE.Vector3(0, 2.75, 0);
+        camera.target = new THREE.Vector3(0, 1.01, 0);
         camera.focusPoint = vec3(-1, 0.7, 0.2);
 		camera.apertureSize = Math.pow(1.33, -3);
         camera.inverseMatrix = new THREE.Matrix4()
@@ -96,21 +96,26 @@ class WebGLTracer {
 
         window.onresize = () => {
             this.renderer.setSize(window.innerWidth*dpr, window.innerHeight*dpr);
+            this.controls.changed = true;
         }
     }
 
     render() {
-        const camera = this.camera;
-        camera.lookAt(camera.target);
-		camera.updateProjectionMatrix();
-        camera.updateMatrixWorld();
-        camera.inverseMatrix.getInverse(camera.projectionMatrix);
-        camera.inverseMatrix.multiplyMatrices(camera.matrixWorld, camera.inverseMatrix);
-        this.material.uniforms.iTime.value = (Date.now() - this.startTime) / 1000;
-        this.material.uniforms.iResolution.value[0] = this.renderer.domElement.width;
-        this.material.uniforms.iResolution.value[1] = this.renderer.domElement.height;
+        if (this.controls.changed) {
+            this.controls.changed = false;
 
-        this.renderer.render(this.scene, camera);
+            const camera = this.camera;
+            camera.lookAt(camera.target);
+            camera.updateProjectionMatrix();
+            camera.updateMatrixWorld();
+            camera.inverseMatrix.getInverse(camera.projectionMatrix);
+            camera.inverseMatrix.multiplyMatrices(camera.matrixWorld, camera.inverseMatrix);
+            this.material.uniforms.iTime.value = (Date.now() - this.startTime) / 1000;
+            this.material.uniforms.iResolution.value[0] = this.renderer.domElement.width;
+            this.material.uniforms.iResolution.value[1] = this.renderer.domElement.height;
+
+            this.renderer.render(this.scene, camera);
+        }
     }
 }
 

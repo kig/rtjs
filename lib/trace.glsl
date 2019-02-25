@@ -43,20 +43,29 @@ vec3 randomVec3(in vec3 p) {
 	return vec3(cos(a) * sr, sin(a) * sr, h);
 }
 
-// vec3 diskPoint(in float seed) {
-// 	float a = random(seed);
-// 	float r = random(a);
-// 	float sr = sqrt(r);
-// 	return vec3(cos(a) * sr, sin(a) * sr, 0.0);
-// }
+vec3 diskPoint(in vec3 p) {
+	float a = random(p.xz);
+	float r = random(p.yx);
+	float sr = sqrt(r);
+	return vec3(cos(a) * sr, sin(a) * sr, 0.0);
+}
 
 Hit setupHit() {
 	return Hit(-1, 1.0e9);
 }
 
+vec3 applyMatrix4(in vec3 v, in mat4 m) {
+	float w = 1.0 / ( m[0][3] * v.x + m[1][3] * v.y + m[2][3] * v.z + m[3][3] );
+
+	return vec3(
+		( m[0][0] * v.x + m[1][0] * v.y + m[2][0] * v.z + m[3][0] ) * w,
+		( m[0][1] * v.x + m[1][1] * v.y + m[2][1] * v.z + m[3][1] ) * w,
+		( m[0][2] * v.x + m[1][2] * v.y + m[2][2] * v.z + m[3][2] ) * w
+	);
+}
+
 vec3 unproject(in vec3 v) {
-	vec4 v1 = cameraInverseMatrix * vec4(v, 1.0);
-	return v1.xyz;
+	return applyMatrix4(v, cameraInverseMatrix);
 }
 
 Ray setupRay(vec2 fragCoord) {
@@ -64,15 +73,15 @@ Ray setupRay(vec2 fragCoord) {
 	uv.x *= iResolution.x / iResolution.y;
 
 	vec3 origin = cameraPosition;
-	vec3 direction = normalize( unproject(vec3(uv*4.0, 1.0)) - origin );
+	vec3 direction = normalize( unproject(vec3(uv, 1.0)) - origin );
 
 	// Camera aperture simulation
 
-	// float focusDistance = length(origin - cameraFocusPoint);
-	// vec3 target = origin + (direction * focusDistance);
+	float focusDistance = length(origin - cameraFocusPoint);
+	vec3 target = origin + (direction * focusDistance);
 
-	// origin += (diskPoint() * cameraApertureSize) * cameraMatrixWorld;
-	// direction = normalize(target - origin); 
+	origin += (inverse(viewMatrix) * vec4((diskPoint(direction) * cameraApertureSize), 1.0)).xyz;
+	direction = normalize(target - origin); 
 
 	return Ray(
 		origin,
@@ -120,7 +129,7 @@ void intersectSphere(in Ray ray, in vec3 p, in float r, inout Hit hit) {
 }
 
 vec3 trace(Array vgArray, vec2 fragCoord) {
-	float epsilon = 0.0001;
+	float epsilon = 0.05;
 	Plane plane = Plane(vec3(0.0), vec3(0.0, 1.0, 0.0), vec3(0.5));
 	Ray r = setupRay(fragCoord);
 

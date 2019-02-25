@@ -92,14 +92,14 @@ void intersectTri(in Array array, in Ray ray, in int triIndex, inout Hit closest
         vec3 s = ray.o - v0;
         float u = f * dot(s, h);
 
-        if (u < -0.00001 || u > 1.00001) {
+        if (u < -0.01 || u > 1.01) {
             return;
         }
 
         vec3 q = cross(s, e1);
         float v = f * dot(ray.d, q);
 
-        if (v < -0.00001 || u + v > 1.00002) {
+        if (v < -0.01 || u + v > 1.02) {
             return;
         }
 
@@ -107,7 +107,7 @@ void intersectTri(in Array array, in Ray ray, in int triIndex, inout Hit closest
         // the intersection point is on the line
         float t = f * dot(e2, q);
 
-        if (t <= 0.00001 || t >= closestHit.distance) {
+        if (t < 0.000001 || t > closestHit.distance-0.001) {
             return;
         }
 
@@ -135,8 +135,8 @@ vec3 triNormal(in Array array, in vec3 point, in int triIndex) {
     vec3 e1 = readVec3(array, off+3);
     vec3 e2 = readVec3(array, off+6);
     
-    float u = dot(point, e1);
-    float v = dot(point, e2);
+    float u = clamp(dot(point, e1), 0.0, 1.0);
+    float v = clamp(dot(point, e2), 0.0, 1.0);
     vec3 n0 = readVec3(array, off+9);
     vec3 n1 = readVec3(array, off+12);
     vec3 n2 = readVec3(array, off+15);

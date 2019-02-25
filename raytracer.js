@@ -47,19 +47,19 @@ var setupRay = function(ray, camera, x, y, w, h) {
 
 	direction.set( uv.x, uv.y, 1 )
 		.applyMatrix4( inverseProjectionMatrix )
-		// .applyMatrix4( matrixWorld )
 		.sub( origin )
 		.normalize();
 
-	// const focusDistance = origin.distanceTo(camera.focusPoint);
-	// target.addVectors( origin, direction.multiplyScalar(focusDistance) );
-
-	// origin.add( diskPointInPlace(diskPointV).multiplyScalar(camera.apertureSize).applyMatrix4(camera.matrixWorld) );
-	// direction.subVectors( target, origin ).normalize();
+	const focusDistance = origin.distanceTo(camera.focusPoint);
+	target.addVectors( origin, direction.multiplyScalar(focusDistance) );
 
 	ray.o.x = origin.x;
 	ray.o.y = origin.y;
 	ray.o.z = origin.z;
+
+	origin.add.call(ray.o, diskPointInPlace(diskPointV).multiplyScalar(camera.apertureSize).applyMatrix4(camera.matrixWorld) );
+	direction.subVectors( target, ray.o ).normalize();
+
 	ray.d.x = direction.x;
 	ray.d.y = direction.y;
 	ray.d.z = direction.z;
