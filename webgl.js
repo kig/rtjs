@@ -46,7 +46,7 @@ class WebGLTracer {
                 cameraApertureSize: { value: 0.3 },
                 cameraInverseMatrix: { value: camera.inverseMatrix },
                 deviceEpsilon: {value: mobile ? 0.01 : 0.0001},
-                deviceEpsilonTrace: {value: mobile ? 0.02 : 0.01},
+                deviceEpsilonTrace: {value: mobile ? 0.05 : 0.01},
                 costVis: {value: false},
                 aaSize: {value: 1.0}
             },

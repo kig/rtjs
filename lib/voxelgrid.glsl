@@ -107,7 +107,7 @@ void intersectTri(in Array array, inout Ray ray, in int triIndex, inout Hit clos
         // the intersection point is on the line
         float t = f * dot(e2, q);
 
-        if (t < 0.000001 || t > closestHit.distance - deviceEpsilon) {
+        if (t < 0.000001 || t > closestHit.distance - deviceEpsilon*0.1) {
             return;
         }
 
