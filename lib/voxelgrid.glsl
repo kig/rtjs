@@ -1,13 +1,10 @@
-#version 300 es
-
-precision highp float;
-precision highp int;
-
 // WebGL 2 shader to ray trace.
 
 uniform sampler2D arrayTex;
 uniform highp isampler2D iarrayTex;
 uniform highp int arrayTexWidth;
+
+uniform bool costVis;
 
 struct Hit {
     int index;
@@ -75,7 +72,7 @@ float intersectBox(in Ray ray, in vec3 origin, in vec3 dims) {
     return max(0.0, tmin);
 }
 
-void intersectTri(in Array array, in Ray ray, in int triIndex, inout Hit closestHit) {
+void intersectTri(in Array array, inout Ray ray, in int triIndex, inout Hit closestHit) {
         int off = 4 + triIndex * 18;
         vec3 v0 = readVec3(array, off);
         vec3 e1 = readVec3(array, off+3);
@@ -92,14 +89,14 @@ void intersectTri(in Array array, in Ray ray, in int triIndex, inout Hit closest
         vec3 s = ray.o - v0;
         float u = f * dot(s, h);
 
-        if (u < -0.01 || u > 1.01) {
+        if (u < -0.0001 || u > 1.0001) {
             return;
         }
 
         vec3 q = cross(s, e1);
         float v = f * dot(ray.d, q);
 
-        if (v < -0.01 || u + v > 1.02) {
+        if (v < -0.0001 || u + v > 1.0002) {
             return;
         }
 
@@ -107,9 +104,16 @@ void intersectTri(in Array array, in Ray ray, in int triIndex, inout Hit closest
         // the intersection point is on the line
         float t = f * dot(e2, q);
 
-        if (t < 0.000001 || t > closestHit.distance-0.001) {
+        if (t < 0.000001 || t > closestHit.distance-0.0001) {
             return;
         }
+
+if (costVis) {
+        if (u < 0.025 || v < 0.025 || u+v > 0.975) {
+            ray.light.g += 1.0;
+            ray.light.b += 1.0;
+        }
+}
 
         closestHit.index = triIndex;
         closestHit.distance = t;
@@ -123,7 +127,9 @@ void intersectTris(in Array array, inout Ray ray, in int coff, in int childSize,
             break;
         }
         if (ray.lastTested != triIndex) {
-            // ray.light.r += 0.1;
+if (costVis) {
+            ray.light.r += 0.1;
+}
             intersectTri(array, ray, triIndex, closestHit);
         }
     }
@@ -184,9 +190,14 @@ void intersectGridLeaf(in Array array, inout Ray ray, in int headOff, inout Hit 
         if (c.x < 0 || c.y < 0 || c.z < 0 || c.x >= size || c.y >= size || c.z >= size) {
             return;
         }
-        // ray.light.g += 0.01;
+if (costVis) {
+        ray.light.b += 0.01;
+}
         int vi = readInt(array, voxelsOff + ci);
         if (vi > 0) {
+if (costVis) {
+            ray.light.g += 0.1;
+}
             int coff = childIndexOff + (vi - 1) * childSize;
             intersectTris(array, ray, coff, childSize, closestHit);
             if (closestHit.index >= 0) {
@@ -257,10 +268,15 @@ void intersectGridNode(in Array array, inout Ray ray, in int headOff, inout Hit 
         if (c.x < 0 || c.y < 0 || c.z < 0 || c.x >= size || c.y >= size || c.z >= size) {
             return;
         }
-        // ray.light.g += 0.01;
+if (costVis) {
+        ray.light.b += 0.01;
+}
         int vi = readInt(array, voxelsOff + ci);
         if (vi > 0) {
             if (isLeaf) {
+if (costVis) {
+                ray.light.g += 0.1;
+}
                 int coff = childIndexOff + (vi - 1) * childSize;
                 intersectTris(array, ray, coff, childSize, closestHit);
                 if (closestHit.index >= 0) {
@@ -270,6 +286,9 @@ void intersectGridNode(in Array array, inout Ray ray, in int headOff, inout Hit 
                     }
                 }
             } else {
+if (costVis) {
+                ray.light.b += 0.1;
+}
                 int coff = childOff + readInt(array, childIndexOff + vi - 1);
                 intersectGridLeaf(array, ray, coff, closestHit);
                 if (closestHit.index >= 0) {

@@ -1,4 +1,4 @@
-const dpr = 1; //window.devicePixelRatio || 1;
+const dpr = window.devicePixelRatio || 1;
 
 class WebGLTracer {
     constructor(vgArray, traceGLSL) {
@@ -43,7 +43,9 @@ class WebGLTracer {
                 cameraFocusPoint: { value: camera.focusPoint },
                 focusDistance: { value: 1.0 },
                 cameraApertureSize: { value: 0.3 },
-                cameraInverseMatrix: { value: camera.inverseMatrix }
+                cameraInverseMatrix: { value: camera.inverseMatrix },
+                costVis: {value: false},
+                aaSize: {value: 1.0}
             },
             vertexShader: `
             #version 300 es
@@ -55,22 +57,28 @@ class WebGLTracer {
                 gl_Position = vec4(position.xyz, 1.0);
             }
             `,
-            fragmentShader: traceGLSL + `
+            fragmentShader: `
+            #version 300 es
+
+            precision highp float;
+            precision highp int;
+            
+            ${traceGLSL}
+
+            uniform float aaSize;
 
             out vec4 FragColor;    
-
-            #define AA_SIZE 1.0
 
             void main() {
                 Array array = Array(arrayTexWidth);
                 vec3 sum = vec3(0.0);
-                for (float y = 0.0; y < AA_SIZE; y++)
-                for (float x = 0.0; x < AA_SIZE; x++) {
-                    vec3 c = trace(array, gl_FragCoord.xy + vec2(x,y) / AA_SIZE);
+                for (float y = 0.0; y < aaSize; y++)
+                for (float x = 0.0; x < aaSize; x++) {
+                    vec3 c = trace(array, gl_FragCoord.xy + vec2(x,y) / aaSize);
                     c = -exp(-c * 0.5) + 1.0;
                     sum +=  c;
                 }
-                FragColor = vec4(sum / (AA_SIZE*AA_SIZE), 1.0);
+                FragColor = vec4(sum / (aaSize*aaSize), 1.0);
             }
             `
         });
@@ -104,6 +112,9 @@ class WebGLTracer {
         if (this.controls.changed) {
             this.controls.changed = false;
 
+            this.material.uniforms.costVis.value = this.controls.debug;
+            this.material.uniforms.aaSize.value = (this.controls.down || this.controls.pinching) ? 1 : 2;
+            
             const camera = this.camera;
             camera.lookAt(camera.target);
             camera.updateProjectionMatrix();

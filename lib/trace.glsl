@@ -77,11 +77,11 @@ Ray setupRay(vec2 fragCoord) {
 
 	// Camera aperture simulation
 
-	float focusDistance = length(origin - cameraFocusPoint);
-	vec3 target = origin + (direction * focusDistance);
+	// float focusDistance = length(origin - cameraFocusPoint);
+	// vec3 target = origin + (direction * focusDistance);
 
-	origin += (inverse(viewMatrix) * vec4((diskPoint(direction) * cameraApertureSize), 1.0)).xyz;
-	direction = normalize(target - origin); 
+	// origin += (inverse(viewMatrix) * vec4((diskPoint(direction) * cameraApertureSize), 1.0)).xyz;
+	// direction = normalize(target - origin); 
 
 	return Ray(
 		origin,
@@ -129,43 +129,61 @@ void intersectSphere(in Ray ray, in vec3 p, in float r, inout Hit hit) {
 }
 
 vec3 trace(Array vgArray, vec2 fragCoord) {
-	float epsilon = 0.05;
+	float epsilon = 0.01;
 	Plane plane = Plane(vec3(0.0), vec3(0.0, 1.0, 0.0), vec3(0.5));
 	Ray r = setupRay(fragCoord);
 
     int headOff = 18 * readInt(vgArray, 0) + 4;
 
-	vec3 bg0 = vec3(0.6+clamp(-1.0, 0.0, 1.0), 0.7, 0.8+(0.4*0.0) * abs(0.0));
+	vec3 bg0;
+
+if (!costVis) {
+	bg0 = vec3(0.6+clamp(-1.0, 0.0, 1.0), 0.7, 0.8+(0.4*0.0) * abs(0.0));
 	bg0 += vec3(10.0, 6.0, 4.0) * 4.0 * pow(clamp(dot(vec3(0.0, 1.0, 0.0), normalize(vec3(6.0, 10.0, 8.0))), 0.0, 1.0), 64.0);
 	bg0 += vec3(3.0, 5.0, 7.0) * abs(1.0 - 0.0);
+	bg0 += vec3(2.0, 1.0, 0.0);
 	bg0 *= 0.05;
+}
 
-	for (float j = 0.0; j < 6.0; j++) {
+	float bounce = 0.0;
+
+	for (int j = 0; j < 6; j++) {
 		Hit hit = setupHit();
 		Hit hit2 = setupHit();
 		// intersectSphere(r, vec3(0.0, 0.5, 0.0), 0.5, hit);
 		intersectGridNode(vgArray, r, headOff, hit);
+if (!costVis) {
 		intersectPlane(r, plane, hit2);
 		if (hit2.distance < hit.distance) {
 			hit = hit2;
 		}
+}
 		if (hit.distance >= SKY_DISTANCE) {
 			break;
 		}
+		bounce++;
 		r.lastTested = hit.index;
 		r.o = r.o + (r.d * hit.distance);
 		r.pathLength += hit.distance;
+if (!costVis) {
 		r.light += r.transmit * (1.0-exp(-hit.distance/40.0)) * bg0;
 		vec3 c = getColor(r, hit.index);
 		r.transmit = r.transmit * c;
+}
 		vec3 nml = hit.index >= 0 ? triNormal(vgArray, r.o, hit.index) : plane.normal;
 		// vec3 nml = hit.index >= 0 ? normalize(r.o-vec3(0.0, 0.5, 0.0)) : plane.normal;
-		r.d = normalize(normalize(reflect(r.d, nml)) + (abs(dot(r.d, nml)) * 0.1) * randomVec3(r.o+r.d));
+		r.d = normalize(reflect(r.d, nml)); //normalize(normalize(reflect(r.d, nml)) + (abs(dot(r.d, nml)) * 0.1) * randomVec3(r.o+r.d));
 		r.o = r.o + nml * epsilon;
 	}
-	vec3 bg = vec3(0.6+clamp(-r.d.y, 0.0, 1.0), 0.7, 0.8+(0.4*r.d.x) * abs(r.d.z));
-	bg += vec3(10.0, 6.0, 4.0) * 4.0 * pow(clamp(dot(r.d, normalize(vec3(6.0, 10.0, 8.0))), 0.0, 1.0), 64.0);
-	bg += vec3(3.0, 5.0, 7.0) * abs(1.0 - r.d.z);
-	r.light = mix(r.light + (r.transmit * bg), bg, 1.0 - exp(-r.pathLength/40.0));
+if (!costVis) {
+	if (bounce < 4.5) {
+		vec3 bg = vec3(0.6+clamp(-r.d.y, 0.0, 1.0), 0.7, 0.8+(0.4*r.d.x) * abs(r.d.z));
+		bg += vec3(10.0, 6.0, 4.0) * 4.0 * pow(clamp(dot(r.d, normalize(vec3(6.0, 10.0, 8.0))), 0.0, 1.0), 64.0);
+		bg += vec3(3.0, 5.0, 7.0) * abs(1.0 - r.d.z);
+		r.light = mix(r.light + (r.transmit * bg), bg, 1.0 - exp(-r.pathLength/40.0));
+	} else {
+		r.light *= 10.0 * clamp((1.0-0.5*(length(r.o-cameraPosition)-3.5)), 0.0, 1.0);
+	}
+}
 	return r.light;
 }
