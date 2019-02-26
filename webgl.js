@@ -98,6 +98,8 @@ class WebGLTracer {
         this.scene.add(this.camera);
         this.scene.add(this.mesh);
 
+        this.frame = 0;
+
         this.controls = new CameraControls(camera, canvas);
         camera.positionOffset.y = 0.1;
         this.startTime = Date.now();
@@ -126,19 +128,96 @@ class WebGLTracer {
             this.material.uniforms.iResolution.value[1] = this.renderer.domElement.height;
 
             this.renderer.render(this.scene, camera);
+            if (this.frame === 0) {
+                console.timeEnd('Load to first frame');
+            }
+            this.frame++;
         }
     }
 }
 
 (async function() {
-    const bunnyRes = await fetch('bunny.vg3');
+    console.time('Load to first frame');
+
     const vgRes = await fetch('lib/voxelgrid.glsl');
     const traceRes = await fetch('lib/trace.glsl');
+    const bunny = await ObjParse.load('bunny.obj');
     const vgText = await vgRes.text();
     const traceText = await traceRes.text();
-    const bunnyVG = await bunnyRes.arrayBuffer();
+        
+    console.time('OBJ munging');
+    var verts = bunny.vertices;
+    var normals = bunny.normals;
 
-    const tracer = new WebGLTracer(new Float32Array(bunnyVG), vgText + '\n' + traceText);
+    var bbox = { 
+        min: vec3(Infinity),
+        max: vec3(-Infinity)
+    };
+    for (let i = 0; i < verts.length; i += 3) {
+        const x = verts[i];
+        const y = verts[i+1];
+        const z = verts[i+2];
+        if (x < bbox.min.x) bbox.min.x = x;
+        if (x > bbox.max.x) bbox.max.x = x;
+        if (y < bbox.min.y) bbox.min.y = y;
+        if (y > bbox.max.y) bbox.max.y = y;
+        if (z < bbox.min.z) bbox.min.z = z;
+        if (z > bbox.max.z) bbox.max.z = z;
+    }
+
+    var scale = 2.0 / (bbox.max.y - bbox.min.y);
+    var xOffset = -(bbox.max.x+bbox.min.x)/2;
+    var zOffset = -(bbox.max.z+bbox.min.z)/2;
+    var yOffset = -bbox.min.y;
+
+    for (var i = 0; i < verts.length; i += 3) {
+        verts[i] += xOffset;
+        verts[i] *= scale;
+        verts[i+1] += yOffset;
+        verts[i+1] *= scale;
+        verts[i+2] += zOffset;
+        verts[i+2] *= scale;
+    }
+    bbox.min = mulS(add(bbox.min, vec3(xOffset, yOffset, zOffset)), scale);
+    bbox.max = mulS(add(bbox.max, vec3(xOffset, yOffset, zOffset)), scale);
+
+    var bunnyTris = [];
+
+    var color = vec3(0.85, 0.53, 0.15);
+    for (var i = 0; i < verts.length; i += 3*3) {
+        var u = vec3(verts[i], verts[i+1], verts[i+2]);
+        var v = vec3(verts[i+3], verts[i+4], verts[i+5]);
+        var w = vec3(verts[i+6], verts[i+7], verts[i+8]);
+        var x = vec3(normals[i], normals[i+1], normals[i+2]);
+        var y = vec3(normals[i+3], normals[i+4], normals[i+5]);
+        var z = vec3(normals[i+6], normals[i+7], normals[i+8]);
+        bunnyTris.push(new Triangle([u,v,w], [x,y,z], color));
+    }
+    bunnyTris.bbox = bbox;
+
+    var size = sub(bunnyTris.bbox.max, bunnyTris.bbox.min);
+    var m = Math.max(size.x, size.y, size.z);
+    var grid = [4,8,4,4];
+    if (bunnyTris.length < 10000) {
+        // Use low-res grid
+        // Fastest JS exec: [32]
+        // Nice mix of VG steps + intersects: [4,4,4]
+        // + Fast JS exec: [8, 8]
+        grid = [32,4];
+    }
+    console.timeEnd('OBJ munging');
+
+    console.time('Create VoxelGrid');
+    const voxelGrid = new VoxelGrid3(bunnyTris.bbox.min, vec3(m), grid, 0);
+    voxelGrid.addTriangles(bunnyTris);
+    console.timeEnd('Create VoxelGrid');
+
+    console.time('Serialize VoxelGrid');
+    bunnyVG = voxelGrid.serialize();
+    console.timeEnd('Serialize VoxelGrid');
+
+
+    const tracer = new WebGLTracer(bunnyVG, vgText + '\n' + traceText);
     tracer.render();
 
     const tick = () => {
