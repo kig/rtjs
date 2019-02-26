@@ -1,5 +1,5 @@
 const mobile = /mobile/i.test(navigator.userAgent);
-const dpr = mobile ? 1 : (window.devicePixelRatio || 1);
+const dpr = (window.devicePixelRatio || 1);
 
 class WebGLTracer {
     constructor(vgArray, traceGLSL) {
@@ -108,7 +108,6 @@ class WebGLTracer {
         this.startTime = Date.now();
 
         window.onresize = () => {
-            this.renderer.setSize(window.innerWidth*dpr, window.innerHeight*dpr);
             this.controls.changed = true;
         }
     }
@@ -117,8 +116,16 @@ class WebGLTracer {
         if (this.controls.changed) {
             this.controls.changed = false;
 
+            const controlsActive = (this.controls.down || this.controls.pinching);
+
             this.material.uniforms.costVis.value = this.controls.debug;
-            this.material.uniforms.aaSize.value = (this.controls.down || this.controls.pinching) ? 1 : 2;
+            this.material.uniforms.aaSize.value = controlsActive ? 1 : 2;
+
+            if (controlsActive) {
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
+            } else {
+                this.renderer.setSize(window.innerWidth*dpr, window.innerHeight*dpr);
+            }
             
             const camera = this.camera;
             camera.lookAt(camera.target);
