@@ -6,6 +6,9 @@ uniform highp int arrayTexWidth;
 
 uniform bool costVis;
 
+uniform float deviceEpsilon;
+uniform float deviceEpsilonTrace;
+
 struct Hit {
     int index;
     float distance;
@@ -89,14 +92,14 @@ void intersectTri(in Array array, inout Ray ray, in int triIndex, inout Hit clos
         vec3 s = ray.o - v0;
         float u = f * dot(s, h);
 
-        if (u < -0.0001 || u > 1.0001) {
+        if (u < 0.0 - deviceEpsilon || u > 1.0 + deviceEpsilon) {
             return;
         }
 
         vec3 q = cross(s, e1);
         float v = f * dot(ray.d, q);
 
-        if (v < -0.0001 || u + v > 1.0002) {
+        if (v < 0.0 - deviceEpsilon || u + v > 1.0 + deviceEpsilon*2.0) {
             return;
         }
 
@@ -104,7 +107,7 @@ void intersectTri(in Array array, inout Ray ray, in int triIndex, inout Hit clos
         // the intersection point is on the line
         float t = f * dot(e2, q);
 
-        if (t < 0.000001 || t > closestHit.distance-0.0001) {
+        if (t < 0.000001 || t > closestHit.distance - deviceEpsilon) {
             return;
         }
 

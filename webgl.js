@@ -1,4 +1,5 @@
-const dpr = /mobile/i.test(navigator.userAgent) ? 1 : (window.devicePixelRatio || 1);
+const mobile = /mobile/i.test(navigator.userAgent);
+const dpr = mobile ? 1 : (window.devicePixelRatio || 1);
 
 class WebGLTracer {
     constructor(vgArray, traceGLSL) {
@@ -44,6 +45,8 @@ class WebGLTracer {
                 focusDistance: { value: 1.0 },
                 cameraApertureSize: { value: 0.3 },
                 cameraInverseMatrix: { value: camera.inverseMatrix },
+                deviceEpsilon: {value: mobile ? 0.01 : 0.0001},
+                deviceEpsilonTrace: {value: mobile ? 0.02 : 0.01},
                 costVis: {value: false},
                 aaSize: {value: 1.0}
             },

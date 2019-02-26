@@ -129,7 +129,7 @@ void intersectSphere(in Ray ray, in vec3 p, in float r, inout Hit hit) {
 }
 
 vec3 trace(Array vgArray, vec2 fragCoord) {
-	float epsilon = 0.01;
+	float epsilon = deviceEpsilonTrace;
 	Plane plane = Plane(vec3(0.0), vec3(0.0, 1.0, 0.0), vec3(0.5));
 	Ray r = setupRay(fragCoord);
 
