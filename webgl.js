@@ -119,7 +119,7 @@ class WebGLTracer {
             const controlsActive = (this.controls.down || this.controls.pinching);
 
             this.material.uniforms.costVis.value = this.controls.debug;
-            this.material.uniforms.aaSize.value = controlsActive ? 1 : 2;
+            this.material.uniforms.aaSize.value = (controlsActive || mobile) ? 1 : 2;
 
             if (controlsActive) {
                 this.renderer.setSize(window.innerWidth, window.innerHeight);
