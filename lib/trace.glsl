@@ -37,7 +37,7 @@ float random(vec2 st) {
 }
 
 vec3 randomVec3(in vec3 p) {
-	float a = random(p.xz);
+	float a = random(p.xz) * (2.0 * 3.14159);
 	float r = random(p.yx);
 	float h = random(p.zy) * 2.0 - 1.0;
 	float sr = sqrt(r);
@@ -45,7 +45,7 @@ vec3 randomVec3(in vec3 p) {
 }
 
 vec3 diskPoint(in vec3 p) {
-	float a = random(p.xz);
+	float a = random(p.xz) * (2.0 * 3.14159);
 	float r = random(p.yx);
 	float sr = sqrt(r);
 	return vec3(cos(a) * sr, sin(a) * sr, 0.0);
@@ -78,7 +78,8 @@ Ray setupRay(vec2 fragCoord) {
 
 	// Camera aperture simulation
 
-	float focusDistance = length(origin - cameraFocusPoint);
+	vec3 cp = cameraFocusPoint - origin;
+	float focusDistance = (dot(cp, direction));
 	vec3 target = origin + (direction * focusDistance);
 
 	origin += applyMatrix4(diskPoint(direction) * cameraApertureSize, cameraMatrixWorld);
@@ -153,12 +154,10 @@ if (!costVis) {
 		Hit hit2 = setupHit();
 		// intersectSphere(r, vec3(0.0, 0.5, 0.0), 0.5, hit);
 		intersectGridNode(vgArray, r, headOff, hit);
-if (!costVis) {
 		intersectPlane(r, plane, hit2);
 		if (hit2.distance < hit.distance) {
 			hit = hit2;
 		}
-}
 		if (hit.distance >= SKY_DISTANCE) {
 			break;
 		}
