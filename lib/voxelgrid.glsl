@@ -320,3 +320,175 @@ if (costVis) {
         }
     }
 }
+
+/*
+
+void intersectGridLeaf(in Array array, inout Ray ray, in int headOff, inout int triHits[4], inout int triHitCount) {
+    vec3 origin = readVec3(array, headOff);
+    int osize = readInt(array, headOff + 3);
+    int size = abs(osize);
+    bool isLeaf = osize > 0;
+    vec3 dims = readVec3(array, headOff + 4);
+    int childSize = readInt(array, headOff + 7);
+    float scale = dims.x / float(size);
+    int voxelsOff = headOff + 8;
+    int childIndexOff = voxelsOff + size * size * size;
+    int childOff = childIndexOff + childSize;
+
+    float t = intersectBox(ray, origin, dims);
+    if (t < 0.0) {
+        return;
+    }
+
+    // Map hit to voxel coordinates
+    Ray tray = ray;
+    tray.o = tray.o + tray.d * (t+0.001*scale);
+
+    vec3 cf = toGrid(tray.o, scale, origin);
+    ivec3 c = ivec3(cf);
+
+    vec3 deltaDist = vec3(
+        length(ray.d / ray.d.x),
+        length(ray.d / ray.d.y),
+        length(ray.d / ray.d.z)
+    );
+    ivec3 cstep = ivec3(sign(ray.d));
+    vec3 next = (max(vec3(0.0), vec3(cstep)) + vec3(cstep) * (vec3(c) - cf)) * deltaDist;
+
+    int ci = c.z * size * size + c.y * size + c.x;
+
+    // Step through the grid while we're inside it
+    for (int i = 0; i < 3*size && triHitCount < 4; i++) {
+        if (c.x < 0 || c.y < 0 || c.z < 0 || c.x >= size || c.y >= size || c.z >= size) {
+            return;
+        }
+        if (costVis) {
+            ray.light.b += 0.01;
+        }
+        int vi = readInt(array, voxelsOff + ci);
+        if (vi > 0) {
+            if (costVis) {
+                ray.light.g += 0.1;
+            }
+            triHits[triHitCount++] = childIndexOff + (vi - 1) * childSize;
+        }
+        if (next.x < next.y) {
+            if (next.x < next.z) {
+                next.x += deltaDist.x;
+                c.x += cstep.x;
+                ci += cstep.x;
+            } else {
+                next.z += deltaDist.z;
+                c.z += cstep.z;
+                ci += cstep.z * size * size;
+            }
+        } else if (next.y < next.z) {
+            next.y += deltaDist.y;
+            c.y += cstep.y;
+            ci += cstep.y * size;
+        } else {
+            next.z += deltaDist.z;
+            c.z += cstep.z;
+            ci += cstep.z * size * size;
+        }
+    }
+}
+
+void intersectGridNode(in Array array, inout Ray ray, in int headOff, inout Hit closestHit) {
+    vec3 origin = readVec3(array, headOff);
+    int osize = readInt(array, headOff + 3);
+    int size = abs(osize);
+    bool isLeaf = osize > 0;
+    vec3 dims = readVec3(array, headOff + 4);
+    int childSize = readInt(array, headOff + 7);
+    float scale = dims.x / float(size);
+    int voxelsOff = headOff + 8;
+    int childIndexOff = voxelsOff + size * size * size;
+    int childOff = childIndexOff + childSize;
+
+    float t = intersectBox(ray, origin, dims);
+    if (t < 0.0) {
+        return;
+    }
+
+    // Map hit to voxel coordinates
+    Ray tray = ray;
+    tray.o = tray.o + tray.d * (t+0.001*scale);
+
+    vec3 cf = toGrid(tray.o, scale, origin);
+    ivec3 c = ivec3(cf);
+
+    vec3 deltaDist = vec3(
+        length(ray.d / ray.d.x),
+        length(ray.d / ray.d.y),
+        length(ray.d / ray.d.z)
+    );
+    ivec3 cstep = ivec3(sign(ray.d));
+    vec3 next = (max(vec3(0.0), vec3(cstep)) + vec3(cstep) * (vec3(c) - cf)) * deltaDist;
+
+    int ci = c.z * size * size + c.y * size + c.x;
+
+    int hits[4];
+    int hitCount = 0;
+
+    // Step through the grid while we're inside it
+    for (int i = 0; i < 3*size && hitCount < 4; i++) {
+        if (c.x < 0 || c.y < 0 || c.z < 0 || c.x >= size || c.y >= size || c.z >= size) {
+            break;
+        }
+        if (costVis) {
+            ray.light.b += 0.01;
+        }
+        int vi = readInt(array, voxelsOff + ci);
+        if (vi > 0) {
+            hits[hitCount++] = vi;
+        }
+        if (next.x < next.y) {
+            if (next.x < next.z) {
+                next.x += deltaDist.x;
+                c.x += cstep.x;
+                ci += cstep.x;
+            } else {
+                next.z += deltaDist.z;
+                c.z += cstep.z;
+                ci += cstep.z * size * size;
+            }
+        } else if (next.y < next.z) {
+            next.y += deltaDist.y;
+            c.y += cstep.y;
+            ci += cstep.y * size;
+        } else {
+            next.z += deltaDist.z;
+            c.z += cstep.z;
+            ci += cstep.z * size * size;
+        }
+    }
+
+    int triHits[4];
+    int triHitCount = 0;
+    for (int i = 0; i < hitCount && triHitCount < 4; i++) {
+        int vi = hits[i];
+        if (isLeaf) {
+            triHits[triHitCount++] = childIndexOff + (vi - 1) * childSize;
+        } else {
+            int coff = childOff + readInt(array, childIndexOff + vi - 1);
+            intersectGridLeaf(array, ray, coff, triHits, triHitCount);
+        }
+    }
+
+    for (int i = 0; i < triHitCount; i++) {
+        if (costVis) {
+            ray.light.g += 0.1;
+        }
+        int coff = triHits[i];
+        intersectTris(array, ray, coff, childSize, closestHit);
+        if (closestHit.index >= 0) {
+            ivec3 p = ivec3(toGrid(ray.o + ray.d * closestHit.distance, scale, origin));
+            if (all(equal(p, c))) {
+                return;
+            }
+        }
+    }
+}
+
+*/

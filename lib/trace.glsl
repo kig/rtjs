@@ -6,6 +6,7 @@
 // uniform vec3 cameraPosition; // = camera position in world space
 
 uniform mat4 cameraInverseMatrix;
+uniform mat4 cameraMatrixWorld;
 
 uniform vec3 cameraFocusPoint;
 uniform float focusDistance;
@@ -77,11 +78,11 @@ Ray setupRay(vec2 fragCoord) {
 
 	// Camera aperture simulation
 
-	// float focusDistance = length(origin - cameraFocusPoint);
-	// vec3 target = origin + (direction * focusDistance);
+	float focusDistance = length(origin - cameraFocusPoint);
+	vec3 target = origin + (direction * focusDistance);
 
-	// origin += (inverse(viewMatrix) * vec4((diskPoint(direction) * cameraApertureSize), 1.0)).xyz;
-	// direction = normalize(target - origin); 
+	origin += applyMatrix4(diskPoint(direction) * cameraApertureSize, cameraMatrixWorld);
+	direction = normalize(target - origin);
 
 	return Ray(
 		origin,
@@ -172,7 +173,8 @@ if (!costVis) {
 }
 		vec3 nml = hit.index >= 0 ? triNormal(vgArray, r.o, hit.index) : plane.normal;
 		// vec3 nml = hit.index >= 0 ? normalize(r.o-vec3(0.0, 0.5, 0.0)) : plane.normal;
-		r.d = normalize(reflect(r.d, nml)); //normalize(normalize(reflect(r.d, nml)) + (abs(dot(r.d, nml)) * 0.1) * randomVec3(r.o+r.d));
+		// r.d = normalize(reflect(r.d, nml)); 
+		r.d = normalize(normalize(reflect(r.d, nml)) + (abs(dot(r.d, nml)) * 1.0) * randomVec3(r.o+r.d));
 		r.o = r.o + nml * epsilon;
 	}
 if (!costVis) {
