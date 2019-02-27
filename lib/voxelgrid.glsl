@@ -153,6 +153,7 @@ vec3 triNormal(in Array array, in vec3 point, in int triIndex) {
     return normalize(mix(mix(n0, n2, v), n1, u));
 }
 
+#ifdef DEPTH_FIRST
 
 void intersectGridLeaf(in Array array, inout Ray ray, in int headOff, inout Hit closestHit) {
     vec3 origin = readVec3(array, headOff);
@@ -321,9 +322,12 @@ if (costVis) {
     }
 }
 
-/*
+#else
 
-void intersectGridLeaf(in Array array, inout Ray ray, in int headOff, inout int triHits[4], inout int triHitCount) {
+#define MAX_HITS 16
+#define MAX_TRI_HITS 8
+
+void intersectGridLeaf(in Array array, inout Ray ray, in int headOff, inout Hit closestHit) {
     vec3 origin = readVec3(array, headOff);
     int osize = readInt(array, headOff + 3);
     int size = abs(osize);
@@ -358,7 +362,7 @@ void intersectGridLeaf(in Array array, inout Ray ray, in int headOff, inout int 
     int ci = c.z * size * size + c.y * size + c.x;
 
     // Step through the grid while we're inside it
-    for (int i = 0; i < 3*size && triHitCount < 4; i++) {
+    for (int i = 0; i < 3*size; i++) {
         if (c.x < 0 || c.y < 0 || c.z < 0 || c.x >= size || c.y >= size || c.z >= size) {
             return;
         }
@@ -370,7 +374,12 @@ void intersectGridLeaf(in Array array, inout Ray ray, in int headOff, inout int 
             if (costVis) {
                 ray.light.g += 0.1;
             }
-            triHits[triHitCount++] = childIndexOff + (vi - 1) * childSize;
+            int coff = childIndexOff + (vi - 1) * childSize;
+            intersectTris(array, ray, coff, childSize, closestHit);
+            ivec3 p = ivec3(toGrid(ray.o + ray.d * closestHit.distance, scale, origin));
+            if (all(equal(p, c))) {
+                return;
+            }
         }
         if (next.x < next.y) {
             if (next.x < next.z) {
@@ -428,11 +437,11 @@ void intersectGridNode(in Array array, inout Ray ray, in int headOff, inout Hit 
 
     int ci = c.z * size * size + c.y * size + c.x;
 
-    int hits[4];
+    int hits[MAX_HITS];
     int hitCount = 0;
 
     // Step through the grid while we're inside it
-    for (int i = 0; i < 3*size && hitCount < 4; i++) {
+    for (int i = 0; i < 3*size && hitCount < MAX_HITS; i++) {
         if (c.x < 0 || c.y < 0 || c.z < 0 || c.x >= size || c.y >= size || c.z >= size) {
             break;
         }
@@ -464,31 +473,15 @@ void intersectGridNode(in Array array, inout Ray ray, in int headOff, inout Hit 
         }
     }
 
-    int triHits[4];
-    int triHitCount = 0;
-    for (int i = 0; i < hitCount && triHitCount < 4; i++) {
+    for (int i = 0; i < hitCount; i++) {
         int vi = hits[i];
-        if (isLeaf) {
-            triHits[triHitCount++] = childIndexOff + (vi - 1) * childSize;
-        } else {
-            int coff = childOff + readInt(array, childIndexOff + vi - 1);
-            intersectGridLeaf(array, ray, coff, triHits, triHitCount);
+        int coff = childOff + readInt(array, childIndexOff + vi - 1);
+        intersectGridLeaf(array, ray, coff, closestHit);
+        if (closestHit.index >= 0) {
+            return;
         }
     }
 
-    for (int i = 0; i < triHitCount; i++) {
-        if (costVis) {
-            ray.light.g += 0.1;
-        }
-        int coff = triHits[i];
-        intersectTris(array, ray, coff, childSize, closestHit);
-        if (closestHit.index >= 0) {
-            ivec3 p = ivec3(toGrid(ray.o + ray.d * closestHit.distance, scale, origin));
-            if (all(equal(p, c))) {
-                return;
-            }
-        }
-    }
 }
 
-*/
+#endif
