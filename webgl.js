@@ -47,7 +47,7 @@ class WebGLTracer {
                 cameraInverseMatrix: { value: camera.inverseMatrix },
                 cameraMatrixWorld: { value: camera.matrixWorld },
                 deviceEpsilon: {value: mobile ? 0.01 : 0.0001},
-                deviceEpsilonTrace: {value: mobile ? 0.05 : 0.007},
+                deviceEpsilonTrace: {value: mobile ? 0.05 : 0.01},
                 roughness: {value: 0.2},
                 costVis: {value: false},
                 aaSize: {value: 1.0},
@@ -82,10 +82,9 @@ class WebGLTracer {
                 for (float y = 0.0; y < aaSize; y++)
                 for (float x = 0.0; x < aaSize; x++) {
                     vec3 c = trace(array, gl_FragCoord.xy + vec2(x,y) / aaSize);
-                    c = -exp(-c * 0.5) + 1.0;
-                    sum +=  c;
+                    sum += c;
                 }
-                FragColor = vec4(sum / (aaSize*aaSize), 1.0);
+                FragColor = vec4(1.0 - exp(-0.5 * sum / (aaSize*aaSize)), 1.0);
             }
             `
         });
@@ -123,7 +122,7 @@ class WebGLTracer {
             const controlsActive = (this.controls.down || this.controls.pinching);
 
             this.material.uniforms.costVis.value = this.controls.debug;
-            this.material.uniforms.aaSize.value = (controlsActive || mobile) ? 1 : 4;
+            this.material.uniforms.aaSize.value = (controlsActive || mobile) ? 1 : (dpr ? 4 : 4);
 
             if (controlsActive) {
                 this.renderer.setSize(window.innerWidth, window.innerHeight);

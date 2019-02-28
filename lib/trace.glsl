@@ -112,7 +112,7 @@ void intersectPlane(in Ray ray, in Plane p, inout Hit hit) {
 	float pd = dot(p.normal, ray.d);
 	if (abs(pd) > 0.00001) {
 		float dist = dot(p.normal, p.point - ray.o) / pd;
-		if (dist > 0.0) {
+		if (dist > 0.0 && length(ray.o + ray.d * dist) < 1.5) {
 			hit.distance = dist;
 			hit.index = -2;
 		}
@@ -144,13 +144,12 @@ vec3 trace(Array vgArray, vec2 fragCoord) {
 
 	vec3 bg0;
 
-if (!costVis) {
-	bg0 = vec3(0.6+clamp(-1.0, 0.0, 1.0), 0.7, 0.8+(0.4*0.0) * abs(0.0));
-	bg0 += vec3(10.0, 6.0, 4.0) * 4.0 * pow(clamp(dot(vec3(0.0, 1.0, 0.0), normalize(vec3(6.0, 10.0, 8.0))), 0.0, 1.0), 64.0);
-	bg0 += vec3(3.0, 5.0, 7.0) * abs(1.0 - 0.0);
-	bg0 += vec3(2.0, 1.0, 0.0);
-	bg0 *= 0.05;
-}
+	if (!costVis) {
+		bg0 = vec3(0.6+clamp(-1.0, 0.0, 1.0), 0.7, 0.8+(0.4*0.0) * abs(0.0));
+		bg0 += 0.25 * vec3(10.0, 6.0, 4.0) * 4.0 * pow(clamp(dot(vec3(0.0, 1.0, 0.0), normalize(vec3(6.0, 10.0, 8.0))), 0.0, 1.0), 64.0);
+		bg0 += vec3(4.0, 5.0, 7.0) * abs(1.0 - 0.0);
+		bg0 *= 0.2;
+	}
 
 	float bounce = 0.0;
 
@@ -190,7 +189,7 @@ if (!costVis) {
 		if (stripes) {
 			r.d = normalize(mix(reflect(r.d, nml), nml + randomVec3(5.0+r.o+r.d), mod(roughness*dot(r.o, r.o)*10.0, 1.0)));// + (abs(dot(r.d, nml)) * roughness) * randomVec3(5.0+r.o+r.d));
 		} else {
-			r.d = normalize(mix(reflect(r.d, nml), nml + randomVec3(5.0+r.o+r.d), roughness));// + (abs(dot(r.d, nml)) * roughness) * randomVec3(5.0+r.o+r.d));
+			r.d = normalize(mix(reflect(r.d, nml), nml + randomVec3(5.0+r.o+r.d), hit.index >= 0 ? roughness : 0.05));// + (abs(dot(r.d, nml)) * roughness) * randomVec3(5.0+r.o+r.d));
 		}
 		r.invD = 1.0 / r.d;
 		r.o = r.o + nml * epsilon;
@@ -198,11 +197,12 @@ if (!costVis) {
 if (!costVis) {
 	if (bounce < 4.5) {
 		vec3 bg = vec3(0.6+clamp(-r.d.y, 0.0, 1.0), 0.7, 0.8+(0.4*r.d.x) * abs(r.d.z));
-		bg += vec3(10.0, 6.0, 4.0) * 4.0 * pow(clamp(dot(r.d, normalize(vec3(6.0, 10.0, 8.0))), 0.0, 1.0), 64.0);
-		bg += vec3(3.0, 5.0, 7.0) * abs(1.0 - r.d.z);
-		r.light = mix(r.light + (r.transmit * bg), bg, 1.0 - exp(-r.pathLength/40.0));
-	} else {
-		r.light *= 10.0 * clamp((1.0-0.5*(length(r.o-cameraPosition)-3.5)), 0.0, 1.0);
+		bg += vec3(10.0, 6.0, 4.0) * pow(clamp(dot(r.d, normalize(vec3(6.0, 10.0, 8.0))), 0.0, 1.0), 16.0);
+		bg += vec3(10.0, 8.0, 6.0) * 4.0 * pow(clamp(dot(r.d, normalize(vec3(6.0, 10.0, 8.0))), 0.0, 1.0), 256.0);
+		bg += vec3(4.0, 5.0, 7.0) * (abs(1.0 - r.d.z));
+		r.light = r.light + r.transmit * bg;
+	// } else {
+		// r.light *= 10.0 * clamp((1.0-0.5*(length(r.o-cameraPosition)-3.5)), 0.0, 1.0);
 	}
 }
 	return r.light;
