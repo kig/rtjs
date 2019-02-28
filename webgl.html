@@ -17,9 +17,89 @@
                 width: 100% !important;
                 height: 100% !important;
             }
+            #controls {
+                position: absolute;
+                left: 10px;
+                top: 10px;
+                z-index: 2;
+                width: 150px;
+                font-family: Baskerville;
+                font-weight: 600;
+                font-variant: all-small-caps;
+                color: #444;
+            }
+
+            input#roughness,
+            input#apertureSize
+            {
+                -webkit-appearance: none;
+                height: 1px;
+                margin: 10px;
+                background: #444;
+                outline: none;
+                position: relative;
+                cursor: default;
+            }
+            input#roughness:after,
+            input#apertureSize:after {
+                position: absolute;
+                right: -24px;
+                top: -6px;
+                color: #444;
+                content: attr(value);
+                text-align: left;
+                width: 20px;
+                pointer-events: none;
+            }
+
+            input[type="checkbox"] {
+                -webkit-appearance: none;
+                vertical-align: top;
+                border: 1px solid #444;
+                background: transparent;
+                top: 0.24em;
+                width: 0.8em;
+                height: 0.8em;
+                position: relative;
+                outline: none;
+                cursor: pointer;
+            }
+            input[type="checkbox"]:checked:after {
+                content: "✓";
+                position: absolute;
+                top: -0.5em;
+                left: -0.1em;
+                font-size: 1.4em;
+                color: #a03932;
+            }
+
+            ::-webkit-slider-thumb {
+                -webkit-appearance: none;
+                height: 17px;
+                width: 2px;
+                background: #444;
+            }
 		</style>
 	</head>
 	<body>
+		<div id="controls">
+			<div>
+				Roughness
+				<input type="range" min="0" max="100" step="1" value="50" id="roughness">
+			</div>
+			<div>
+				ƒ-stop
+				<input type="range" min="1" max="16" step="0.1" value="4" id="apertureSize">
+			</div>
+			<div>
+				Show focal plane
+				<input type="checkbox" id="showFocalPlane">
+			</div>
+			<div>
+				Stripes
+				<input type="checkbox" id="stripes">
+			</div>
+		</div>
 
 		<script src="lib/third_party/three.js"></script>
 		<script src="lib/third_party/hammer.min.js"></script>

@@ -12,9 +12,14 @@ uniform vec3 cameraFocusPoint;
 uniform float focusDistance;
 uniform float cameraApertureSize;
 
+uniform float roughness;
+
 uniform vec2 iResolution;
 
 uniform float iTime;
+
+uniform bool showFocalPlane;
+uniform bool stripes;
 
 const float SKY_DISTANCE = 1e6;
 
@@ -39,9 +44,8 @@ float random(vec2 st) {
 vec3 randomVec3(in vec3 p) {
 	float a = random(p.xz) * (2.0 * 3.14159);
 	float r = random(p.yx);
-	float h = random(p.zy) * 2.0 - 1.0;
-	float sr = sqrt(r);
-	return vec3(cos(a) * sr, sin(a) * sr, h);
+    r = 2.0 * r - 1.0;
+    return vec3(sqrt(1.0 - r * r) * vec2(cos(a), sin(a)), r);
 }
 
 vec3 diskPoint(in vec3 p) {
@@ -78,18 +82,19 @@ Ray setupRay(vec2 fragCoord) {
 
 	// Camera aperture simulation
 
-	vec3 cp = cameraFocusPoint - origin;
-	float focusDistance = (dot(cp, direction));
+	vec3 cameraFocusVector = cameraFocusPoint - origin;
+	float focusDistance = dot(cameraFocusVector, direction);
 	vec3 target = origin + (direction * focusDistance);
 
-	origin += applyMatrix4(diskPoint(direction) * cameraApertureSize, cameraMatrixWorld);
+	origin += applyMatrix4(diskPoint(5.0+origin+direction) * cameraApertureSize, cameraMatrixWorld);
 	direction = normalize(target - origin);
 
 	return Ray(
 		origin,
 		direction,
+		1.0 / direction,
 		vec3(1.0),
-		vec3(0.0),
+		vec3(0.0, 0.0, 0.0),
 		0.0,
 		-1
 	);
@@ -161,19 +166,33 @@ if (!costVis) {
 		if (hit.distance >= SKY_DISTANCE) {
 			break;
 		}
+		if (showFocalPlane) {
+			vec3 cameraFocusVector = cameraFocusPoint - r.o;
+			float focusDistance = (dot(cameraFocusVector, r.d));
+			r.light.r += 10.0 * (
+				2.0 * clamp(0.1 / cameraApertureSize - abs(hit.distance - focusDistance), 0.0, 0.1) +
+				200.0 * max(0.0, 0.03 - abs(hit.distance - focusDistance)) 
+			);
+		}
 		bounce++;
 		r.lastTested = hit.index;
 		r.o = r.o + (r.d * hit.distance);
 		r.pathLength += hit.distance;
-if (!costVis) {
-		r.light += r.transmit * (1.0-exp(-hit.distance/40.0)) * bg0;
-		vec3 c = getColor(r, hit.index);
-		r.transmit = r.transmit * c;
-}
+		if (!costVis) {
+			r.light += r.transmit * (1.0-exp(-hit.distance/40.0)) * bg0;
+			vec3 c = getColor(r, hit.index);
+			r.transmit = r.transmit * c;
+		}
 		vec3 nml = hit.index >= 0 ? triNormal(vgArray, r.o, hit.index) : plane.normal;
+		// float troughness = mod(float(hit.index+2), 100.0) / 99.0; 
 		// vec3 nml = hit.index >= 0 ? normalize(r.o-vec3(0.0, 0.5, 0.0)) : plane.normal;
-		// r.d = normalize(reflect(r.d, nml)); 
-		r.d = normalize(normalize(reflect(r.d, nml)) + (abs(dot(r.d, nml)) * 1.0) * randomVec3(r.o+r.d));
+		// r.d = normalize(reflect(r.d, nml));
+		if (stripes) {
+			r.d = normalize(mix(reflect(r.d, nml), nml + randomVec3(5.0+r.o+r.d), mod(roughness*dot(r.o, r.o)*10.0, 1.0)));// + (abs(dot(r.d, nml)) * roughness) * randomVec3(5.0+r.o+r.d));
+		} else {
+			r.d = normalize(mix(reflect(r.d, nml), nml + randomVec3(5.0+r.o+r.d), roughness));// + (abs(dot(r.d, nml)) * roughness) * randomVec3(5.0+r.o+r.d));
+		}
+		r.invD = 1.0 / r.d;
 		r.o = r.o + nml * epsilon;
 	}
 if (!costVis) {

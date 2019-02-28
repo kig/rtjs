@@ -17,6 +17,7 @@ struct Hit {
 struct Ray {
     vec3 o;
     vec3 d;
+    vec3 invD;
     vec3 transmit;
     vec3 light;
     float pathLength;
@@ -55,13 +56,25 @@ vec3 readVec3(Array array, int index) {
     );
 }
 
+
+float forceIntersectBox(in Ray ray, in vec3 origin, in vec3 dims) {
+    vec3 bmin = origin;
+    vec3 bmax = origin + dims;
+    vec3 t0 = (bmin - ray.o) * ray.invD;
+    vec3 t1 = (bmax - ray.o) * ray.invD;
+    vec3 swaps = (sign(ray.invD) + 1.0) * 0.5;
+    vec3 swaps2 = 1.0 - swaps;
+    vec3 t0_ = t0 * swaps + t1 * swaps2;
+
+    return max(0.0, max(t0_.x, max(t0_.y, t0_.z)));
+}
+
 float intersectBox(in Ray ray, in vec3 origin, in vec3 dims) {
     vec3 bmin = origin;
     vec3 bmax = origin + dims;
-    vec3 invD = 1.0 / ray.d;
-    vec3 t0 = (bmin - ray.o) * invD;
-    vec3 t1 = (bmax - ray.o) * invD;
-    vec3 swaps = (sign(invD) + 1.0) * 0.5;
+    vec3 t0 = (bmin - ray.o) * ray.invD;
+    vec3 t1 = (bmax - ray.o) * ray.invD;
+    vec3 swaps = (sign(ray.invD) + 1.0) * 0.5;
     vec3 swaps2 = 1.0 - swaps;
     vec3 t0_ = t0 * swaps + t1 * swaps2;
     vec3 t1_ = t0 * swaps2 + t1 * swaps;
@@ -111,12 +124,13 @@ void intersectTri(in Array array, inout Ray ray, in int triIndex, inout Hit clos
             return;
         }
 
-if (costVis) {
-        if (u < 0.025 || v < 0.025 || u+v > 0.975) {
-            ray.light.g += 1.0;
-            ray.light.b += 1.0;
+        if (costVis) {
+            float borderWidth = 0.025;
+            if (u < borderWidth || v < borderWidth || u+v > 1.0-borderWidth) {
+                ray.light.g += 1.0;
+                ray.light.b += 1.0;
+            }
         }
-}
 
         closestHit.index = triIndex;
         closestHit.distance = t;
@@ -155,21 +169,17 @@ vec3 triNormal(in Array array, in vec3 point, in int triIndex) {
 
 #ifndef BREADTH_FIRST
 
-void intersectGridLeaf(in Array array, inout Ray ray, in int headOff, inout Hit closestHit, ivec3 cstep, vec3 deltaDist) {
-    vec3 origin = readVec3(array, headOff);
-    int size = readInt(array, headOff + 3);
-    vec3 dims = readVec3(array, headOff + 4);
+void intersectGridLeaf(in Array array, inout Ray ray, in int headOff, inout Hit closestHit, 
+                        ivec3 cstep, vec3 deltaDist, vec3 origin, int size, float scale, vec3 cp) {
+    // vec3 origin = readVec3(array, headOff);
+    // int size = readInt(array, headOff + 3);
+    // vec3 dims = readVec3(array, headOff + 4);
     int childSize = readInt(array, headOff + 7);
-    
-    float scale = dims.x / float(size);
 
     int voxelsOff = headOff + 8;
     int childIndexOff = voxelsOff + size * size * size;
-    int childOff = childIndexOff + childSize;
 
-    float t = intersectBox(ray, origin, dims);
-
-    vec3 cf = toGrid(ray.o + ray.d * (t + 0.001 * scale), scale, origin);
+    vec3 cf = toGrid(cp, scale, origin);
     ivec3 c = ivec3(cf);
 
     if (c.x < 0 || c.y < 0 || c.z < 0 || c.x >= size || c.y >= size || c.z >= size) {
@@ -249,19 +259,25 @@ void intersectGridNode(in Array array, inout Ray ray, in int headOff, inout Hit 
     if (t < 0.0) {
         return;
     }
+    
+    int childSubSize = readInt(array, childOff + readInt(array, childIndexOff) + 3);
 
-    vec3 cf = toGrid(ray.o + ray.d * (t + 0.001 * scale), scale, origin);
+    vec3 cp = ray.o + ray.d * (t + 0.001 * scale);
+    vec3 cf = toGrid(cp, scale, origin);
     ivec3 c = ivec3(cf);
 
     vec3 deltaDist = vec3(
-        length(ray.d / ray.d.x),
-        length(ray.d / ray.d.y),
-        length(ray.d / ray.d.z)
+        length(ray.d * ray.invD.x),
+        length(ray.d * ray.invD.y),
+        length(ray.d * ray.invD.z)
     );
     ivec3 cstep = ivec3(sign(ray.d));
     vec3 next = (max(vec3(0.0), vec3(cstep)) + vec3(cstep) * (vec3(c) - cf)) * deltaDist;
 
     int ci = c.z * size * size + c.y * size + c.x;
+
+    float childScale = scale / float(childSubSize);
+    vec3 childDims = vec3(scale);
 
     // Step through the grid while we're inside it
     for (int i = 0; i < 3*size; i++) {
@@ -277,7 +293,10 @@ void intersectGridNode(in Array array, inout Ray ray, in int headOff, inout Hit 
                 ray.light.b += 0.1;
             }
             int coff = childOff + readInt(array, childIndexOff + vi - 1);
-            intersectGridLeaf(array, ray, coff, closestHit, cstep, deltaDist);
+            vec3 childOrigin = origin + vec3(c) * scale;
+            float ct = forceIntersectBox(ray, childOrigin, childDims);
+            vec3 ccp = ray.o + ray.d * (ct + childScale * 0.001);
+            intersectGridLeaf(array, ray, coff, closestHit, cstep, deltaDist, childOrigin, childSubSize, childScale, ccp);
             if (closestHit.index >= 0) {
                 return;
             }
@@ -334,9 +353,9 @@ void intersectGridLeaf(in Array array, inout Ray ray, in int headOff, inout Hit 
     ivec3 c = ivec3(cf);
 
     vec3 deltaDist = vec3(
-        length(ray.d / ray.d.x),
-        length(ray.d / ray.d.y),
-        length(ray.d / ray.d.z)
+        length(ray.d * ray.invD.x),
+        length(ray.d * ray.invD.y),
+        length(ray.d * ray.invD.z)
     );
     ivec3 cstep = ivec3(sign(ray.d));
     vec3 next = (max(vec3(0.0), vec3(cstep)) + vec3(cstep) * (vec3(c) - cf)) * deltaDist;
@@ -410,9 +429,9 @@ void intersectGridNode(in Array array, inout Ray ray, in int headOff, inout Hit 
     ivec3 c = ivec3(cf);
 
     vec3 deltaDist = vec3(
-        length(ray.d / ray.d.x),
-        length(ray.d / ray.d.y),
-        length(ray.d / ray.d.z)
+        length(ray.d * ray.invD.x),
+        length(ray.d * ray.invD.y),
+        length(ray.d * ray.invD.z)
     );
     ivec3 cstep = ivec3(sign(ray.d));
     vec3 next = (max(vec3(0.0), vec3(cstep)) + vec3(cstep) * (vec3(c) - cf)) * deltaDist;

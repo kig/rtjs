@@ -26,9 +26,9 @@ class WebGLTracer {
         this.renderer.clear();
 
         var camera = new THREE.PerspectiveCamera(55, 1, 0.1, 100);
-        camera.target = new THREE.Vector3(0, 1.01, 0);
-        camera.focusPoint = vec3(-1, 0.7, 0.2);
-		camera.apertureSize = Math.pow(1.33, -3);
+        camera.target = new THREE.Vector3(0, 1.1, 0);
+        camera.focusPoint = vec3(-0.9, 1.3, 0.3);
+		camera.apertureSize = Math.pow(1.33, -11);
         camera.inverseMatrix = new THREE.Matrix4()
         camera.lookAt(camera.target);
         camera.updateProjectionMatrix();
@@ -43,13 +43,16 @@ class WebGLTracer {
                 iResolution: { value: [canvas.width, canvas.height] },
                 cameraFocusPoint: { value: camera.focusPoint },
                 focusDistance: { value: 1.0 },
-                cameraApertureSize: { value: 0.3 },
+                cameraApertureSize: { value: camera.apertureSize },
                 cameraInverseMatrix: { value: camera.inverseMatrix },
                 cameraMatrixWorld: { value: camera.matrixWorld },
                 deviceEpsilon: {value: mobile ? 0.01 : 0.0001},
-                deviceEpsilonTrace: {value: mobile ? 0.05 : 0.01},
+                deviceEpsilonTrace: {value: mobile ? 0.05 : 0.007},
+                roughness: {value: 0.2},
                 costVis: {value: false},
-                aaSize: {value: 1.0}
+                aaSize: {value: 1.0},
+                stripes: { value: false },
+                showFocalPlane: { value: false }
             },
             vertexShader: `
             #version 300 es
@@ -120,7 +123,7 @@ class WebGLTracer {
             const controlsActive = (this.controls.down || this.controls.pinching);
 
             this.material.uniforms.costVis.value = this.controls.debug;
-            this.material.uniforms.aaSize.value = (controlsActive || mobile) ? 1 : 2;
+            this.material.uniforms.aaSize.value = (controlsActive || mobile) ? 1 : 4;
 
             if (controlsActive) {
                 this.renderer.setSize(window.innerWidth, window.innerHeight);
@@ -134,9 +137,16 @@ class WebGLTracer {
             camera.updateMatrixWorld();
             camera.inverseMatrix.getInverse(camera.projectionMatrix);
             camera.inverseMatrix.multiplyMatrices(camera.matrixWorld, camera.inverseMatrix);
+            camera.apertureSize = Math.pow(1.33, 1-window.apertureSize.value);
+
+            this.material.uniforms.stripes.value = !!window.stripes.checked;
+            this.material.uniforms.showFocalPlane.value = !!window.showFocalPlane.checked;
+
             this.material.uniforms.iTime.value = (Date.now() - this.startTime) / 1000;
+            this.material.uniforms.cameraApertureSize.value = camera.apertureSize;
             this.material.uniforms.iResolution.value[0] = this.renderer.domElement.width;
             this.material.uniforms.iResolution.value[1] = this.renderer.domElement.height;
+            this.material.uniforms.roughness.value = window.roughness.value / 100;
 
             this.renderer.render(this.scene, camera);
             if (this.frame === 0) {
@@ -230,6 +240,22 @@ class WebGLTracer {
 
     const tracer = new WebGLTracer(bunnyVG, vgText + '\n' + traceText);
     tracer.render();
+
+    window.roughness.oninput = window.apertureSize.oninput = function(ev) {
+        tracer.controls.pinching = true;
+        tracer.controls.changed = true;
+        this.setAttribute('value', this.value);
+    };
+
+    window.roughness.onchange = window.apertureSize.onchange = function() {
+        tracer.controls.pinching = false;
+        tracer.controls.changed = true;
+        this.setAttribute('value', this.value);
+    };
+        
+    window.showFocalPlane.onchange = window.stripes.onchange = function() {
+        tracer.controls.changed = true;
+    };
 
     const tick = () => {
 
