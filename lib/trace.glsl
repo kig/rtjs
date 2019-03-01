@@ -102,7 +102,7 @@ Ray setupRay(vec2 fragCoord) {
 
 vec3 getColor(in Ray r, in int index) {
 	if (index < 0) {
-		return vec3(0.5);
+		return vec3(0.1);
 	} else {
 		return vec3(0.85, 0.53, 0.15);
 	}
