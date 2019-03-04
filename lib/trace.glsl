@@ -21,6 +21,10 @@ uniform float iTime;
 uniform bool showFocalPlane;
 uniform bool stripes;
 
+uniform float iFrame;
+
+uniform sampler2D blueNoise;
+
 const float SKY_DISTANCE = 1e6;
 
 struct Plane {
@@ -29,6 +33,10 @@ struct Plane {
 	vec3 color;
 };
 
+vec4 randomBlue(ivec2 st) {
+	return texelFetch(blueNoise, st, 0);
+}
+
 float InterleavedGradientNoise(in vec2 xy) {
   return fract(52.9829189f
               * fract(xy.x * 0.06711056f
@@ -36,23 +44,26 @@ float InterleavedGradientNoise(in vec2 xy) {
 }
 
 float random(vec2 st) {
-    return fract(fract(dot(gl_FragCoord.xy/iResolution.xy + st.xy,
+    return fract(fract(dot(gl_FragCoord.xy/iResolution.xy + st.xy + mod(vec2(iFrame/1000.0, iTime), vec2(1.0)),
                          vec2(12.9898,78.233)))*
         43758.5453123);
 }
 
 vec3 randomVec3(in vec3 p) {
-	float a = random(p.xz) * (2.0 * 3.14159);
-	float r = random(p.yx);
+	vec2 ar = randomBlue(ivec2(mod(gl_FragCoord.xy + 43758.5453123*vec2(12.9898,78.233)*p.xz + vec2(1819278.233*p.y+iFrame, floor(iFrame/1024.0)), vec2(1024.0)))).zw;
+	float a = ar.x * (2.0 * 3.14159);
+	float r = ar.y;
     r = 2.0 * r - 1.0;
     return vec3(sqrt(1.0 - r * r) * vec2(cos(a), sin(a)), r);
 }
 
-vec3 diskPoint(in vec3 p) {
-	float a = random(p.xz) * (2.0 * 3.14159);
-	float r = random(p.yx);
-	float sr = sqrt(r);
-	return vec3(cos(a) * sr, sin(a) * sr, 0.0);
+vec3 diskPoint(in vec2 p) {
+	// float a = random(p.xz) * (2.0 * 3.14159);
+	// float r = random(p.yx);
+	vec2 ar = randomBlue(ivec2(mod(43758.5453123 * p * 4.0 + vec2(12.9898,78.233)*vec2(iFrame, floor(iFrame/1024.0)), vec2(1024.0)))).xy;
+	ar.x *= (2.0 * 3.14159);
+	float sr = sqrt(ar.y);
+	return vec3(cos(ar.x) * sr, sin(ar.x) * sr, 0.0);
 }
 
 Hit setupHit() {
@@ -86,7 +97,7 @@ Ray setupRay(vec2 fragCoord) {
 	float focusDistance = dot(cameraFocusVector, direction);
 	vec3 target = origin + (direction * focusDistance);
 
-	origin += applyMatrix4(diskPoint(5.0+origin+direction) * cameraApertureSize, cameraMatrixWorld);
+	origin += applyMatrix4(diskPoint(fragCoord) * cameraApertureSize, cameraMatrixWorld);
 	direction = normalize(target - origin);
 
 	return Ray(
@@ -102,7 +113,7 @@ Ray setupRay(vec2 fragCoord) {
 
 vec3 getColor(in Ray r, in int index) {
 	if (index < 0) {
-		return vec3(0.5);
+		return vec3(0.1);
 	} else {
 		return vec3(0.85, 0.53, 0.15);
 	}
@@ -177,19 +188,20 @@ vec3 trace(Array vgArray, vec2 fragCoord) {
 		r.lastTested = hit.index;
 		r.o = r.o + (r.d * hit.distance);
 		r.pathLength += hit.distance;
-		if (!costVis) {
-			r.light += r.transmit * (1.0-exp(-hit.distance/40.0)) * bg0;
-			vec3 c = getColor(r, hit.index);
-			r.transmit = r.transmit * c;
-		}
 		vec3 nml = hit.index >= 0 ? triNormal(vgArray, r.o, hit.index) : plane.normal;
 		// float troughness = mod(float(hit.index+2), 100.0) / 99.0; 
 		// vec3 nml = hit.index >= 0 ? normalize(r.o-vec3(0.0, 0.5, 0.0)) : plane.normal;
 		// r.d = normalize(reflect(r.d, nml));
+		float fresnel = pow(1.0 - abs(dot(r.d, nml)), 5.0);
+		if (!costVis) {
+			r.light += r.transmit * (1.0-exp(-hit.distance/40.0)) * bg0;
+			vec3 c = getColor(r, hit.index);
+			r.transmit = r.transmit * c; //mix(c, vec3(1.0), fresnel * fresnel);
+		}
 		if (stripes) {
-			r.d = normalize(mix(reflect(r.d, nml), nml + randomVec3(5.0+r.o+r.d), mod(roughness*dot(r.o, r.o)*10.0, 1.0)));// + (abs(dot(r.d, nml)) * roughness) * randomVec3(5.0+r.o+r.d));
+			r.d = normalize(mix(reflect(r.d, nml), nml + randomVec3(5.0+r.o+r.d), (1.0-fresnel) * mod(roughness*dot(r.o, r.o)*10.0, 1.0)));// + (abs(dot(r.d, nml)) * roughness) * randomVec3(5.0+r.o+r.d));
 		} else {
-			r.d = normalize(mix(reflect(r.d, nml), nml + randomVec3(5.0+r.o+r.d), hit.index >= 0 ? roughness : 0.05));// + (abs(dot(r.d, nml)) * roughness) * randomVec3(5.0+r.o+r.d));
+			r.d = normalize(mix(reflect(r.d, nml), nml + randomVec3(5.0+r.o+r.d), (1.0-fresnel) * (hit.index >= 0 ? roughness : 0.05)));// + (abs(dot(r.d, nml)) * roughness) * randomVec3(5.0+r.o+r.d));
 		}
 		r.invD = 1.0 / r.d;
 		r.o = r.o + nml * epsilon;

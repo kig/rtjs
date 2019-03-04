@@ -2,7 +2,7 @@ const mobile = /mobile/i.test(navigator.userAgent);
 const dpr = (window.devicePixelRatio || 1);
 
 class WebGLTracer {
-    constructor(vgArray, traceGLSL) {
+    constructor(vgArray, traceGLSL, blueNoiseTexture) {
         var canvas = document.createElement( 'canvas' );
         var context = canvas.getContext( 'webgl2' );
         var texSize = Math.ceil(Math.sqrt(vgArray.length));
@@ -25,6 +25,19 @@ class WebGLTracer {
         this.renderer.setClearColor(0x00ffff);
         this.renderer.clear();
 
+        this.renderTarget = new THREE.WebGLRenderTarget(window.innerWidth*dpr, window.innerHeight*dpr, {
+            format: THREE.RGBAFormat,
+            type: THREE.FloatType
+        });
+        this.accumRenderTargetA = new THREE.WebGLRenderTarget(window.innerWidth*dpr, window.innerHeight*dpr, {
+            format: THREE.RGBAFormat,
+            type: THREE.FloatType
+        });
+        this.accumRenderTargetB = new THREE.WebGLRenderTarget(window.innerWidth*dpr, window.innerHeight*dpr, {
+            format: THREE.RGBAFormat,
+            type: THREE.FloatType
+        });
+
         var camera = new THREE.PerspectiveCamera(55, 1, 0.1, 100);
         camera.target = new THREE.Vector3(0, 1.1, 0);
         camera.focusPoint = vec3(-0.9, 1.3, 0.3);
@@ -34,11 +47,13 @@ class WebGLTracer {
         camera.updateProjectionMatrix();
         camera.updateMatrixWorld();
 
-        this.material = new THREE.ShaderMaterial({
+        this.material = new THREE.RawShaderMaterial({
             uniforms: {
                 iTime: { value: 1.0 },
+                iFrame: { value: 0 },
                 arrayTex: { value: this.vgTexture },
                 iarrayTex: { value: this.ivgTexture },
+                blueNoise: { value: blueNoiseTexture },
                 arrayTexWidth: { value: texSize },
                 iResolution: { value: [canvas.width, canvas.height] },
                 cameraFocusPoint: { value: camera.focusPoint },
@@ -54,21 +69,23 @@ class WebGLTracer {
                 stripes: { value: false },
                 showFocalPlane: { value: false }
             },
-            vertexShader: `
-            #version 300 es
+            vertexShader: `#version 300 es
 
             precision highp float;
             precision highp int;
+
+            in vec3 position;
 
             void main() {
                 gl_Position = vec4(position.xyz, 1.0);
             }
             `,
-            fragmentShader: `
-            #version 300 es
+            fragmentShader: `#version 300 es
 
             precision highp float;
             precision highp int;
+
+            uniform vec3 cameraPosition;
             
             ${traceGLSL}
 
@@ -79,24 +96,142 @@ class WebGLTracer {
             void main() {
                 Array array = Array(arrayTexWidth);
                 vec3 sum = vec3(0.0);
-                for (float y = 0.0; y < aaSize; y++)
-                for (float x = 0.0; x < aaSize; x++) {
-                    vec3 c = trace(array, gl_FragCoord.xy + vec2(x,y) / aaSize);
+                // for (float y = 0.0; y < aaSize; y++)
+                // for (float x = 0.0; x < aaSize; x++) {
+                    float y = mod(iFrame / aaSize, aaSize);
+                    float x = mod(iFrame - aaSize * y, aaSize);
+                    vec3 c = trace(array, gl_FragCoord.xy + (vec2(x,y) + vec2(random(vec2(x,y)), random(vec2(y,x)))) / aaSize);
                     sum += c;
-                }
-                FragColor = vec4(1.0 - exp(-0.5 * sum / (aaSize*aaSize)), 1.0);
+                // }
+                FragColor = vec4(sum, 1.0);
             }
-            `
+            `,
+            depthTest: false,
+            depthWrite: false
         });
         this.mesh = new THREE.Mesh(
             new THREE.PlaneGeometry(2,2,1),
             this.material
         );
-        this.material.depthTest = false;
-        this.material.depthWrite = false;
         this.mesh.frustumCulled = false;
         this.mesh.position.z = -0.5;
         this.mesh.rotation.y = Math.PI;
+
+        this.accumMaterial = new THREE.RawShaderMaterial({
+            uniforms: {
+                tex: { value: this.renderTarget.texture },
+                accumTex: { value: this.accumRenderTargetA.texture },
+                iFrame: { value: 0 }
+            },
+            vertexShader: this.material.vertexShader,
+            fragmentShader: `#version 300 es
+
+            precision highp float;
+            precision highp int;
+            
+            uniform sampler2D tex;
+            uniform sampler2D accumTex;
+
+            uniform float iFrame;
+
+            out vec4 FragColor;    
+
+            void main() {
+                vec4 src = texelFetch(tex, ivec2(gl_FragCoord.xy), 0);
+                vec4 dst = texelFetch(accumTex, ivec2(gl_FragCoord.xy), 0);
+                FragColor = iFrame > 0.0 ? dst + src : src;
+            }
+            `,
+            depthTest: false,
+            depthWrite: false
+        });
+        this.accumMesh = new THREE.Mesh(
+            new THREE.PlaneGeometry(2,2,1),
+            this.accumMaterial
+        );
+        this.accumMesh.frustumCulled = false;
+        this.accumMesh.position.z = -0.5;
+        this.accumMesh.rotation.y = Math.PI;
+
+
+        this.blurMaterial = new THREE.RawShaderMaterial({
+            uniforms: {
+                tex: { value: this.accumRenderTargetB.texture },
+                sigma: {value: this.frame+1 },
+                direction: { value: 0 }
+            },
+            vertexShader: this.material.vertexShader,
+            fragmentShader: `#version 300 es
+
+            precision highp float;
+            precision highp int;
+            
+            uniform sampler2D tex;
+            uniform float sigma;
+            uniform int direction;
+
+            out vec4 FragColor;    
+
+            float normpdf(in float x, in float sigma) {
+                return 0.39894 * exp(-0.5 * x * x / (sigma * sigma)) / sigma;
+            }
+
+            void main() {
+                const int radius = 50;
+                
+                vec4 accum = normpdf(0.0, sigma) * texelFetch(tex, ivec2(gl_FragCoord.xy), 0);
+
+                for (int i = 1; i <= radius; i++) {
+                    ivec2 offset = ivec2(i * direction, i * (1 - direction));
+                    accum += normpdf(float(i), sigma) * (
+                        texelFetch(tex, ivec2(gl_FragCoord.xy) - offset, 0) +
+                        texelFetch(tex, ivec2(gl_FragCoord.xy) + offset, 0)
+                    );
+                }
+
+                FragColor = accum;
+            }
+            `,
+            depthTest: false,
+            depthWrite: false
+        });
+        this.blurMesh = new THREE.Mesh(
+            new THREE.PlaneGeometry(2,2,1),
+            this.blurMaterial
+        );
+        this.blurMesh.frustumCulled = false;
+        this.blurMesh.position.z = -0.5;
+        this.blurMesh.rotation.y = Math.PI;
+
+        this.blitMaterial = new THREE.RawShaderMaterial({
+            uniforms: {
+                tex: { value: this.renderTarget.texture }
+            },
+            vertexShader: this.material.vertexShader,
+            fragmentShader: `#version 300 es
+
+            precision highp float;
+            precision highp int;
+            
+            uniform sampler2D tex;
+
+            out vec4 FragColor;    
+
+            void main() {
+                vec4 src = texelFetch(tex, ivec2(gl_FragCoord.xy), 0);
+                FragColor = vec4(1.0 - exp(-0.5 * src.rgb / src.a), 1.0);
+            }
+            `,
+            depthTest: false,
+            depthWrite: false
+        });
+        this.blitMesh = new THREE.Mesh(
+            new THREE.PlaneGeometry(2,2,1),
+            this.blitMaterial
+        );
+        this.blitMesh.frustumCulled = false;
+        this.blitMesh.position.z = -0.5;
+        this.blitMesh.rotation.y = Math.PI;
 
         this.scene = new THREE.Scene();
         this.camera = camera;
@@ -116,18 +251,40 @@ class WebGLTracer {
     }
 
     render() {
-        if (this.controls.changed) {
+        if (this.controls.changed || this.frame < 1000) {
+            if (this.controls.changed) {
+                this.frame = 0;
+            }
             this.controls.changed = false;
 
             const controlsActive = (this.controls.down || this.controls.pinching);
 
             this.material.uniforms.costVis.value = this.controls.debug;
-            this.material.uniforms.aaSize.value = (controlsActive || mobile) ? 1 : (dpr ? 4 : 4);
+            this.material.uniforms.aaSize.value = 4; // (controlsActive || mobile) ? 1 : (dpr ? 4 : 4);
+
+            var dprValue = dpr;
 
             if (controlsActive) {
-                this.renderer.setSize(window.innerWidth, window.innerHeight);
+                if (this.renderer.domElement.width !== window.innerWidth ||
+                    this.renderer.domElement.height !== window.innerHeight
+                ) {
+                    this.frame = 0;
+                    this.renderer.setSize(window.innerWidth, window.innerHeight);
+                    this.renderTarget.setSize(window.innerWidth, window.innerHeight);
+                    this.accumRenderTargetA.setSize(window.innerWidth, window.innerHeight);
+                    this.accumRenderTargetB.setSize(window.innerWidth, window.innerHeight);
+                }
+                dprValue = 1;
             } else {
-                this.renderer.setSize(window.innerWidth*dpr, window.innerHeight*dpr);
+                if (this.renderer.domElement.width !== window.innerWidth*dpr ||
+                    this.renderer.domElement.height !== window.innerHeight*dpr
+                ) {
+                    this.frame = 0;
+                    this.renderer.setSize(window.innerWidth*dpr, window.innerHeight*dpr);
+                    this.renderTarget.setSize(window.innerWidth*dpr, window.innerHeight*dpr);
+                    this.accumRenderTargetA.setSize(window.innerWidth*dpr, window.innerHeight*dpr);
+                    this.accumRenderTargetB.setSize(window.innerWidth*dpr, window.innerHeight*dpr);
+                }
             }
             
             const camera = this.camera;
@@ -141,15 +298,40 @@ class WebGLTracer {
             this.material.uniforms.stripes.value = !!window.stripes.checked;
             this.material.uniforms.showFocalPlane.value = !!window.showFocalPlane.checked;
 
+            this.material.uniforms.iFrame.value = this.frame;
+            this.accumMaterial.uniforms.iFrame.value = this.frame;
+
             this.material.uniforms.iTime.value = (Date.now() - this.startTime) / 1000;
             this.material.uniforms.cameraApertureSize.value = camera.apertureSize;
             this.material.uniforms.iResolution.value[0] = this.renderer.domElement.width;
             this.material.uniforms.iResolution.value[1] = this.renderer.domElement.height;
             this.material.uniforms.roughness.value = window.roughness.value / 100;
 
-            this.renderer.render(this.scene, camera);
-            if (this.frame === 0) {
+            this.renderer.render(this.scene, camera, this.renderTarget);
+            this.accumMaterial.uniforms.accumTex.value = this.accumRenderTargetA.texture;
+            this.renderer.render(this.accumMesh, camera, this.accumRenderTargetB);
+            if (this.frame < 90) {
+                this.blurMaterial.uniforms.sigma.value = 25.0 * Math.pow(1.01 - (this.frame+1) / 90, 8.0);
+                this.blurMaterial.uniforms.direction.value = 0;
+                this.blurMaterial.uniforms.tex.value = this.accumRenderTargetB.texture;
+                this.renderer.render(this.blurMesh, camera, this.accumRenderTargetA);
+                this.blurMaterial.uniforms.direction.value = 1;
+                this.blurMaterial.uniforms.tex.value = this.accumRenderTargetA.texture;
+                this.renderer.render(this.blurMesh, camera, this.renderTarget);
+                this.blitMaterial.uniforms.tex.value = this.renderTarget.texture;
+            } else {
+                this.blitMaterial.uniforms.tex.value = this.accumRenderTargetB.texture;
+            }
+            this.renderer.render(this.blitMesh, camera);
+
+            // Swap render targets for accumulator
+            const tmp = this.accumRenderTargetA;
+            this.accumRenderTargetA = this.accumRenderTargetB;
+            this.accumRenderTargetB = tmp;
+
+            if (this.frame === 0 && !this.firstFrameTimerFired) {
                 console.timeEnd('Load to first frame');
+                this.firstFrameTimerFired = true;
             }
             this.frame++;
         }
@@ -159,12 +341,30 @@ class WebGLTracer {
 (async function() {
     console.time('Load to first frame');
 
+    const onLoad = function() {
+        if (tracer) {
+            tracer.render();
+
+            const tick = () => {
+                tracer.render();
+                requestAnimationFrame(tick);
+            }
+            tick();
+        
+            document.body.append(tracer.renderer.domElement);
+        } else {
+            setTimeout(onLoad, 10);
+        }
+    };
+
+    const blueNoiseTexture = new THREE.TextureLoader().load('blue_noise.png', onLoad);
+
     const vgRes = await fetch('lib/voxelgrid.glsl');
     const traceRes = await fetch('lib/trace.glsl');
     const bunny = await ObjParse.load('bunny.obj');
     const vgText = await vgRes.text();
     const traceText = await traceRes.text();
-        
+
     console.time('OBJ munging');
     var verts = bunny.vertices;
     var normals = bunny.normals;
@@ -237,8 +437,7 @@ class WebGLTracer {
     console.timeEnd('Serialize VoxelGrid');
 
 
-    const tracer = new WebGLTracer(bunnyVG, vgText + '\n' + traceText);
-    tracer.render();
+    const tracer = new WebGLTracer(bunnyVG, vgText + '\n' + traceText, blueNoiseTexture);
 
     window.roughness.oninput = window.apertureSize.oninput = function(ev) {
         tracer.controls.pinching = true;
@@ -256,16 +455,4 @@ class WebGLTracer {
         tracer.controls.changed = true;
     };
 
-    const tick = () => {
-
-        // tracer.camera.position.x = Math.cos(Date.now()/1000) * 15;
-        // tracer.camera.position.y = 9.0 + Math.cos(Date.now()/4531) * 2.4;
-        // tracer.camera.position.z = Math.sin(Date.now()/1000) * 15;
-        // tracer.camera.fov = 120;
-        tracer.render();
-        requestAnimationFrame(tick);
-    }
-    tick();
-
-    document.body.append(tracer.renderer.domElement);
 })();
