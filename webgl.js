@@ -251,7 +251,7 @@ class WebGLTracer {
     }
 
     render() {
-        if (this.controls.changed || this.frame < 100) {
+        if (this.controls.changed || this.frame < 500) {
             if (this.controls.changed) {
                 this.frame = 0;
             }
@@ -310,8 +310,8 @@ class WebGLTracer {
             this.renderer.render(this.scene, camera, this.renderTarget);
             this.accumMaterial.uniforms.accumTex.value = this.accumRenderTargetA.texture;
             this.renderer.render(this.accumMesh, camera, this.accumRenderTargetB);
-            if (this.frame < 90 && dprValue === 1 && !this.controls.debug) {
-                this.blurMaterial.uniforms.sigma.value = 25.0 * Math.pow(1.01 - (this.frame+1) / 90, 8.0);
+            if (this.frame < 30 && dprValue === 1 && !this.controls.debug) {
+                this.blurMaterial.uniforms.sigma.value = 25.0 * Math.pow(1.01 - (this.frame+1) / 30, 8.0);
                 this.blurMaterial.uniforms.direction.value = 0;
                 this.blurMaterial.uniforms.tex.value = this.accumRenderTargetB.texture;
                 this.renderer.render(this.blurMesh, camera, this.accumRenderTargetA);
@@ -427,7 +427,7 @@ class WebGLTracer {
         // Fastest JS exec: [32]
         // Nice mix of VG steps + intersects: [4,4,4]
         // + Fast JS exec: [8, 8]
-        grid = [16,2,2,2];
+        grid = [32,2];
     }
     console.timeEnd('OBJ munging');
 

@@ -44,7 +44,7 @@ Ray setupRay(vec2 fragCoord) {
 
 vec3 getColor(in Ray r, in int index) {
 	if (index < 0) {
-		return vec3(0.1);
+		return vec3(0.45);
 	} else {
 		return vec3(0.85, 0.53, 0.15);
 	}
@@ -72,7 +72,7 @@ vec3 trace(Array vgArray, vec2 fragCoord) {
 		Hit hit = setupHit();
 		Hit hit2 = setupHit();
 		// intersectSphere(r, vec3(0.0, 0.5, 0.0), 0.5, hit);
-		intersectGridNodeLevel0(vgArray, r, headOff, hit);
+		intersectGridNode(vgArray, r, headOff, hit);
 		intersectPlane(r, plane, hit2);
 		if (hit2.distance < hit.distance) {
 			hit = hit2;
