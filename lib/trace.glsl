@@ -1,12 +1,7 @@
-// uniform mat4 modelMatrix; // = object.matrixWorld
-// uniform mat4 modelViewMatrix; // = camera.matrixWorldInverse * object.matrixWorld
-// uniform mat4 projectionMatrix; // = camera.projectionMatrix
-// uniform mat4 viewMatrix; // = camera.matrixWorldInverse
-// uniform mat3 normalMatrix; // = inverse transpose of modelViewMatrix
-// uniform vec3 cameraPosition; // = camera position in world space
 
-uniform mat4 cameraInverseMatrix;
-uniform mat4 cameraMatrixWorld;
+// Ray tracing setup
+
+uniform float deviceEpsilonTrace;
 
 uniform vec3 cameraFocusPoint;
 uniform float focusDistance;
@@ -14,64 +9,12 @@ uniform float cameraApertureSize;
 
 uniform float roughness;
 
-uniform vec2 iResolution;
-
-uniform float iTime;
-
 uniform bool showFocalPlane;
 uniform bool stripes;
 
+
 const float SKY_DISTANCE = 1e6;
 
-struct Plane {
-	vec3 point;
-	vec3 normal;
-	vec3 color;
-};
-
-float InterleavedGradientNoise(in vec2 xy) {
-  return fract(52.9829189f
-              * fract(xy.x * 0.06711056f
-                   + xy.y * 0.00583715f));
-}
-
-float random(vec2 st) {
-    return fract(fract(dot(gl_FragCoord.xy/iResolution.xy + st.xy,
-                         vec2(12.9898,78.233)))*
-        43758.5453123);
-}
-
-vec3 randomVec3(in vec3 p) {
-	float a = random(p.xz) * (2.0 * 3.14159);
-	float r = random(p.yx);
-    r = 2.0 * r - 1.0;
-    return vec3(sqrt(1.0 - r * r) * vec2(cos(a), sin(a)), r);
-}
-
-vec3 diskPoint(in vec3 p) {
-	float a = random(p.xz) * (2.0 * 3.14159);
-	float r = random(p.yx);
-	float sr = sqrt(r);
-	return vec3(cos(a) * sr, sin(a) * sr, 0.0);
-}
-
-Hit setupHit() {
-	return Hit(-1, 1.0e9);
-}
-
-vec3 applyMatrix4(in vec3 v, in mat4 m) {
-	float w = 1.0 / ( m[0][3] * v.x + m[1][3] * v.y + m[2][3] * v.z + m[3][3] );
-
-	return vec3(
-		( m[0][0] * v.x + m[1][0] * v.y + m[2][0] * v.z + m[3][0] ) * w,
-		( m[0][1] * v.x + m[1][1] * v.y + m[2][1] * v.z + m[3][1] ) * w,
-		( m[0][2] * v.x + m[1][2] * v.y + m[2][2] * v.z + m[3][2] ) * w
-	);
-}
-
-vec3 unproject(in vec3 v) {
-	return applyMatrix4(v, cameraInverseMatrix);
-}
 
 Ray setupRay(vec2 fragCoord) {
 	vec2 uv = (fragCoord.xy / iResolution.xy) * 2.0 - 1.0;
@@ -106,33 +49,6 @@ vec3 getColor(in Ray r, in int index) {
 	} else {
 		return vec3(0.85, 0.53, 0.15);
 	}
-}
-
-void intersectPlane(in Ray ray, in Plane p, inout Hit hit) {
-	float pd = dot(p.normal, ray.d);
-	if (abs(pd) > 0.00001) {
-		float dist = dot(p.normal, p.point - ray.o) / pd;
-		if (dist > 0.0 && length(ray.o + ray.d * dist) < 1.5) {
-			hit.distance = dist;
-			hit.index = -2;
-		}
-	}
-}
-
-void intersectSphere(in Ray ray, in vec3 p, in float r, inout Hit hit) {
-	vec3 rc = ray.o - p; 
-	float c = dot(rc, rc) - r*r;
-	float b = dot(ray.d, rc);
-	float d = b*b - c;
-	if (d < 0.0) {
-		return;
-	}
-	float t = -b - sqrt(d);
-	if (t <= 0.0) {
-		return;
-	}
-	hit.distance = t;
-	hit.index = -3;
 }
 
 vec3 trace(Array vgArray, vec2 fragCoord) {

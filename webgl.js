@@ -159,12 +159,13 @@ class WebGLTracer {
 (async function() {
     console.time('Load to first frame');
 
-    const vgRes = await fetch('lib/voxelgrid.glsl');
-    const traceRes = await fetch('lib/trace.glsl');
+    const shaderNames = ['primitives', 'voxelgrid', 'trace'];
+
+    const shaderRes = shaderNames.map(name => fetch(`lib/${name}.glsl`));
     const bunny = await ObjParse.load('bunny.obj');
-    const vgText = await vgRes.text();
-    const traceText = await traceRes.text();
-        
+
+    const shaders = await Promise.all(shaderRes.map(async res => (await res).text()));
+    
     console.time('OBJ munging');
     var verts = bunny.vertices;
     var normals = bunny.normals;
@@ -237,7 +238,7 @@ class WebGLTracer {
     console.timeEnd('Serialize VoxelGrid');
 
 
-    const tracer = new WebGLTracer(bunnyVG, vgText + '\n' + traceText);
+    const tracer = new WebGLTracer(bunnyVG, shaders.join('\n'));
     tracer.render();
 
     window.roughness.oninput = window.apertureSize.oninput = function(ev) {
