@@ -1,32 +1,6 @@
-// WebGL 2 shader to ray trace.
 
-uniform sampler2D arrayTex;
-uniform highp isampler2D iarrayTex;
-uniform highp int arrayTexWidth;
+// Four-level voxel grid to accelerate triangle search
 
-uniform bool costVis;
-
-uniform float deviceEpsilon;
-uniform float deviceEpsilonTrace;
-
-struct Hit {
-    int index;
-    float distance;
-};
-
-struct Ray {
-    vec3 o;
-    vec3 d;
-    vec3 invD;
-    vec3 transmit;
-    vec3 light;
-    float pathLength;
-    int lastTested;
-};
-
-struct Array {
-    int width;
-};
 
 vec3 fromGrid(vec3 coord, float scale, vec3 origin) {
     return origin + (coord * scale);
@@ -35,107 +9,6 @@ vec3 fromGrid(vec3 coord, float scale, vec3 origin) {
 vec3 toGrid(vec3 point, float scale, vec3 origin) {
     return (point - origin) / scale;
 }
-
-int readInt(Array array, int index) {
-    int v = index / array.width;
-    int u = index - (v * array.width);
-    return texelFetch(iarrayTex, ivec2(u, v), 0).r;
-}
-
-float readFloat(Array array, int index) {
-    int v = index / array.width;
-    int u = index  - (v * array.width);
-    return texelFetch(arrayTex, ivec2(u, v), 0).r;
-}
-
-vec3 readVec3(Array array, int index) {
-    return vec3(
-        readFloat(array, index),
-        readFloat(array, index + 1),
-        readFloat(array, index + 2)
-    );
-}
-
-
-float forceIntersectBox(in Ray ray, in vec3 origin, in vec3 dims) {
-    vec3 bmin = origin;
-    vec3 bmax = origin + dims;
-    vec3 t0 = (bmin - ray.o) * ray.invD;
-    vec3 t1 = (bmax - ray.o) * ray.invD;
-    vec3 swaps = (sign(ray.invD) + 1.0) * 0.5;
-    vec3 swaps2 = 1.0 - swaps;
-    vec3 t0_ = t0 * swaps + t1 * swaps2;
-
-    return max(0.0, max(t0_.x, max(t0_.y, t0_.z)));
-}
-
-float intersectBox(in Ray ray, in vec3 origin, in vec3 dims) {
-    vec3 bmin = origin;
-    vec3 bmax = origin + dims;
-    vec3 t0 = (bmin - ray.o) * ray.invD;
-    vec3 t1 = (bmax - ray.o) * ray.invD;
-    vec3 swaps = (sign(ray.invD) + 1.0) * 0.5;
-    vec3 swaps2 = 1.0 - swaps;
-    vec3 t0_ = t0 * swaps + t1 * swaps2;
-    vec3 t1_ = t0 * swaps2 + t1 * swaps;
-
-    float tmin = max(t0_.x, max(t0_.y, t0_.z));
-    float tmax = min(t1_.x, min(t1_.y, t1_.z));
-
-    if (tmax <= tmin) {
-        return -1.0;
-    }
-    return max(0.0, tmin);
-}
-
-void intersectTri(in Array array, inout Ray ray, in int triIndex, inout Hit closestHit) {
-        int off = 4 + triIndex * 18;
-        vec3 v0 = readVec3(array, off);
-        vec3 e1 = readVec3(array, off+3);
-        vec3 e2 = readVec3(array, off+6);
-
-        vec3 h = cross(ray.d, e2);
-        float a = dot(e1, h);
-
-        if (a > -0.00001 && a < 0.00001) {
-            return;
-        }
-
-        float f = 1.0 / a;
-        vec3 s = ray.o - v0;
-        float u = f * dot(s, h);
-
-        if (u < 0.0 - deviceEpsilon || u > 1.0 + deviceEpsilon) {
-            return;
-        }
-
-        vec3 q = cross(s, e1);
-        float v = f * dot(ray.d, q);
-
-        if (v < 0.0 - deviceEpsilon || u + v > 1.0 + deviceEpsilon*2.0) {
-            return;
-        }
-
-        // at this stage we can compute t to find out where
-        // the intersection point is on the line
-        float t = f * dot(e2, q);
-
-        if (t < 0.000001 || t > closestHit.distance - deviceEpsilon*0.1) {
-            return;
-        }
-
-        if (costVis) {
-            float borderWidth = 0.025;
-            if (u < borderWidth || v < borderWidth || u+v > 1.0-borderWidth) {
-                ray.light.g += 1.0;
-                ray.light.b += 1.0;
-            }
-        }
-
-        closestHit.index = triIndex;
-        closestHit.distance = t;
-}
-
 
 void intersectTris(in Array array, inout Ray ray, in int coff, in int childSize, inout Hit closestHit) {
     for (int j = 0; j < childSize; j++) {
@@ -150,21 +23,6 @@ void intersectTris(in Array array, inout Ray ray, in int coff, in int childSize,
             intersectTri(array, ray, triIndex, closestHit);
         }
     }
-}
-
-vec3 triNormal(in Array array, in vec3 point, in int triIndex) {
-    int off = 4 + triIndex * 18;
-
-    vec3 e1 = readVec3(array, off+3);
-    vec3 e2 = readVec3(array, off+6);
-    
-    float u = clamp(dot(point, e1), 0.0, 1.0);
-    float v = clamp(dot(point, e2), 0.0, 1.0);
-    vec3 n0 = readVec3(array, off+9);
-    vec3 n1 = readVec3(array, off+12);
-    vec3 n2 = readVec3(array, off+15);
-
-    return normalize(mix(mix(n0, n2, v), n1, u));
 }
 
 #ifndef BREADTH_FIRST
