@@ -168,7 +168,7 @@ vec3 trace(Array vgArray, vec2 fragCoord) {
 		Hit hit = setupHit();
 		Hit hit2 = setupHit();
 		// intersectSphere(r, vec3(0.0, 0.5, 0.0), 0.5, hit);
-		intersectGridNode(vgArray, r, headOff, hit);
+		intersectGridNodeLevel0(vgArray, r, headOff, hit);
 		intersectPlane(r, plane, hit2);
 		if (hit2.distance < hit.distance) {
 			hit = hit2;
@@ -176,7 +176,7 @@ vec3 trace(Array vgArray, vec2 fragCoord) {
 		if (hit.distance >= SKY_DISTANCE) {
 			break;
 		}
-		if (showFocalPlane) {
+		if (showFocalPlane && j == 0) {
 			vec3 cameraFocusVector = cameraFocusPoint - r.o;
 			float focusDistance = (dot(cameraFocusVector, r.d));
 			r.light.r += 10.0 * (
@@ -196,7 +196,8 @@ vec3 trace(Array vgArray, vec2 fragCoord) {
 		if (!costVis) {
 			r.light += r.transmit * (1.0-exp(-hit.distance/40.0)) * bg0;
 			vec3 c = getColor(r, hit.index);
-			r.transmit = r.transmit * c; //mix(c, vec3(1.0), fresnel * fresnel);
+			vec3 filmColor = abs(sin(r.o+4.0*r.d));
+			r.transmit = r.transmit * c; //mix(c, filmColor, fresnel);
 		}
 		if (stripes) {
 			r.d = normalize(mix(reflect(r.d, nml), nml + randomVec3(5.0+r.o+r.d), (1.0-fresnel) * mod(roughness*dot(r.o, r.o)*10.0, 1.0)));// + (abs(dot(r.d, nml)) * roughness) * randomVec3(5.0+r.o+r.d));

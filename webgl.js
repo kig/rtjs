@@ -251,7 +251,7 @@ class WebGLTracer {
     }
 
     render() {
-        if (this.controls.changed || this.frame < 1000) {
+        if (this.controls.changed || this.frame < 100) {
             if (this.controls.changed) {
                 this.frame = 0;
             }
@@ -310,7 +310,7 @@ class WebGLTracer {
             this.renderer.render(this.scene, camera, this.renderTarget);
             this.accumMaterial.uniforms.accumTex.value = this.accumRenderTargetA.texture;
             this.renderer.render(this.accumMesh, camera, this.accumRenderTargetB);
-            if (this.frame < 90) {
+            if (this.frame < 90 && dprValue === 1 && !this.controls.debug) {
                 this.blurMaterial.uniforms.sigma.value = 25.0 * Math.pow(1.01 - (this.frame+1) / 90, 8.0);
                 this.blurMaterial.uniforms.direction.value = 0;
                 this.blurMaterial.uniforms.tex.value = this.accumRenderTargetB.texture;
@@ -340,6 +340,8 @@ class WebGLTracer {
 
 (async function() {
     console.time('Load to first frame');
+
+    var tracer = false;
 
     const onLoad = function() {
         if (tracer) {
@@ -417,13 +419,14 @@ class WebGLTracer {
 
     var size = sub(bunnyTris.bbox.max, bunnyTris.bbox.min);
     var m = Math.max(size.x, size.y, size.z);
-    var grid = [4,8,4,4];
+    // decent for dragon [32, 4, 2, 2] and [16,4,4,2] and [32,2,2,2]
+    var grid = [32,4,2,2];
     if (bunnyTris.length < 10000) {
         // Use low-res grid
         // Fastest JS exec: [32]
         // Nice mix of VG steps + intersects: [4,4,4]
         // + Fast JS exec: [8, 8]
-        grid = [32,4];
+        grid = [16,2,2,2];
     }
     console.timeEnd('OBJ munging');
 
@@ -437,7 +440,7 @@ class WebGLTracer {
     console.timeEnd('Serialize VoxelGrid');
 
 
-    const tracer = new WebGLTracer(bunnyVG, vgText + '\n' + traceText, blueNoiseTexture);
+    tracer = new WebGLTracer(bunnyVG, vgText + '\n' + traceText, blueNoiseTexture);
 
     window.roughness.oninput = window.apertureSize.oninput = function(ev) {
         tracer.controls.pinching = true;
