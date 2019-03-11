@@ -117,6 +117,13 @@ vec3 diskPoint(in vec2 p) {
 	return vec3(cos(ar.x) * sr, sin(ar.x) * sr, 0.0);
 }
 
+// vec3 randomVec3(in vec3 p) {
+//     if (iFrame > 30.0) {
+//         return randomVec3U(p);
+//     } else {
+//         return randomVec3B(p);
+//     }
+// }
 
 // Three.js math
 

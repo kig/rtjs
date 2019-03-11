@@ -79,7 +79,7 @@ var trace = function(rays, raysLength, scene, console) {
 	plane._nml = plane._normal;
 	let rayCount = 0;
 	let lastRayCount = rayCount;
-	for (let j=0; j<6; j++) {
+	for (let j=0; j<1; j++) {
 		for (let i=0; i<raysLength; i++) {
 			const r = rays[i];
 			if (r.finished) continue;
@@ -102,8 +102,8 @@ var trace = function(rays, raysLength, scene, console) {
 				let bg = mulS(vec3(0.6+sat(-r.d.y), 0.7, 0.8+(0.4*r.d.x)*abs(r.d.z)), 1);
 				bg = add(bg, mulS(vec3(10.0, 6.0, 4.0), 4*pow(sat(dot(r.d, normalize(vec3(6.0, 10.0, 8.0)))), 64.0) ));
 				bg = add(bg, mulS(vec3(3, 5, 7), abs(1-r.d.z)));
-				// r.light = add(r.light, mul(r.transmit, bg));
-				r.light = mul(r.transmit, bg);
+				r.light = add(r.light, add(mul(r.transmit, bg), mulS(bg, 1-Math.exp(-r.pathLength/40))));
+				// r.light = mul(r.transmit, bg);
 				r.finished = true;
 			}
 		}
@@ -116,7 +116,7 @@ var trace = function(rays, raysLength, scene, console) {
 		var bg = mulS(vec3(0.6+sat(-r.d.y), 0.7, 0.8+(0.4*r.d.x)*abs(r.d.z)), 1);
 		bg = add(bg, mulS(vec3(10.0, 6.0, 4.0), 4*pow(sat(dot(r.d, normalize(vec3(6.0, 10.0, 8.0)))), 64.0) ));
 		bg = add(bg, mulS(vec3(3, 5, 7), abs(1-r.d.z)));
-		r.light = mulS(bg, 1-Math.exp(-r.pathLength/40));
+		r.light = add(r.light, mulS(bg, 1-Math.exp(-r.pathLength/40)));
 		r.finished = true;
 	}
 
@@ -177,25 +177,26 @@ var getAcceleration = function(bunnyTris, scene, bvhWidth, acceleration, rays, c
 			grid = [8,8];
 		}
 
-		const voxelGrid = new VoxelGrid3(bunnyTris.bbox.min, vec3(m), grid, 0);
-		voxelGrid.addTriangles(bunnyTris);
-		const blob = voxelGrid.serialize();
+		// const voxelGrid = new VoxelGrid3(bunnyTris.bbox.min, vec3(m), grid, 0);
+		// voxelGrid.addTriangles(bunnyTris);
+		// const blob = voxelGrid.serialize();
 		// var a = document.createElement('a');
 		// a.download = 'bunny.vg3';
 		// a.href = URL.createObjectURL(new Blob([ blob.buffer ]));
 		// a.click();
 		// window.console.log(blob);
 		// voxelGrid.createShortCuts();
-		var accel = new SerializedVG(blob, bunnyTris[0]._color, grid.length === 1);
+		// var accel = new SerializedVG(blob, bunnyTris[0]._color, grid.length === 1);
 
-		// const voxelGrid = new VoxelGrid2(bunnyTris.bbox.min, vec3(m), grid, 0);
-		// for (var i = 0; i < bunnyTris.length; i++) {
-		// 	voxelGrid.add(bunnyTris[i]);
-		// }
-		// voxelGrid.prune();
+		const voxelGrid = new VoxelGrid4(bunnyTris.bbox.min, vec3(m), grid, 0);
+		for (var i = 0; i < bunnyTris.length; i++) {
+			voxelGrid.add(bunnyTris[i]);
+		}
+		//voxelGrid.prune();
 		// console.log("VG pruned", VoxelGrid2.pruned);
-		// var accel = voxelGrid;
-
+		console.log("VG count", VoxelGrid.count);
+		console.log("Voxel count", Voxel.count);
+		var accel = voxelGrid;
 
 		console.timeEnd("voxelGrid build");
 
@@ -406,12 +407,14 @@ ObjParse.load('bunny.obj').then(function(bunny) {
 
 	var rays = [];
 
+
 	function render() {
 		if (!controls.changed && !controls.down && !controls.wasDown && paused) return;
 		if (!paused) t += 16;
 		camera.lookAt(camera.target);
 		camera.updateProjectionMatrix();
 		camera.updateMatrixWorld();
+		controls.changed = false;
 
 		var canvasSize = parseInt(window.canvasSize.value);
 		var AA_SIZE = parseInt(window.aaSize.value);
@@ -472,6 +475,13 @@ ObjParse.load('bunny.obj').then(function(bunny) {
 
 		VoxelGrid.stepCount = 0;
 		VoxelGrid.cmpCount = 0;
+		VoxelGrid.descendCount = 0;
+		VoxelGrid4.cacheLineLoadCount = 0;
+		VoxelGrid4.cacheLines = {};
+		Voxel.visitCount = 0;
+		for (var i in Voxel.visitCounts) {
+			Voxel.visitCounts[i] = 0;
+		}
 		BeamSphere.sphereTests = 0;
 		BeamSphere.beamTests = 0;
 		BeamSphere.primitiveTests = 0;
@@ -482,9 +492,15 @@ ObjParse.load('bunny.obj').then(function(bunny) {
 		
 		if (acceleration === 'VoxelGrid') {
 			console.log(VoxelGrid.stepCount, "VoxelGrid steps");
+			console.log(VoxelGrid.descendCount, "VoxelGrid descend steps");
 			console.log(VoxelGrid.cmpCount, "VoxelGrid primitive intersection tests");
+			console.log(VoxelGrid4.cacheLineLoadCount, "VG cache line loads");
+			console.log(VoxelGrid4.cacheLineLoadCount * 32, "VG loads in bytes");
 			console.log(VoxelGrid.stepCount / rayCount, "VG steps per ray");
+			console.log(VoxelGrid.descendCount / rayCount, "VG descend steps per ray");
+			console.log(Voxel.visitCount / rayCount, "Voxel visits per ray");
 			console.log(VoxelGrid.cmpCount / rayCount, "VG primitive intersection tests per ray");
+			console.log(VoxelGrid4.cacheLineLoadCount / rayCount, "VG cache line loads per ray");
 		}
 
 		if (acceleration === 'BeamSphere') {

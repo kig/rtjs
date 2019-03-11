@@ -42,6 +42,7 @@ class WebGLTracer {
         camera.target = new THREE.Vector3(0, 1.1, 0);
         camera.focusPoint = vec3(-0.9, 1.3, 0.3);
 		camera.apertureSize = Math.pow(1.33, -11);
+        camera.previousMatrix = new THREE.Matrix4();
         camera.inverseMatrix = new THREE.Matrix4()
         camera.lookAt(camera.target);
         camera.updateProjectionMatrix();
@@ -65,7 +66,7 @@ class WebGLTracer {
                 deviceEpsilonTrace: {value: mobile ? 0.05 : 0.01},
                 roughness: {value: 0.2},
                 costVis: {value: false},
-                aaSize: {value: 1.0},
+                aaSize: {value: 4.0},
                 stripes: { value: false },
                 showFocalPlane: { value: false }
             },
@@ -100,7 +101,7 @@ class WebGLTracer {
                 // for (float x = 0.0; x < aaSize; x++) {
                     float y = mod(iFrame / aaSize, aaSize);
                     float x = mod(iFrame - aaSize * y, aaSize);
-                    vec3 c = trace(array, gl_FragCoord.xy + (vec2(x,y) + vec2(random(vec2(x,y)), random(vec2(y,x)))) / aaSize);
+                    vec3 c = trace(array, gl_FragCoord.xy + (vec2(x,y) + vec2(random(0.5*vec2(x,y)), random(0.5+0.5*vec2(x,y)))) / aaSize);
                     sum += c;
                 // }
                 FragColor = vec4(sum, 1.0);
@@ -252,6 +253,7 @@ class WebGLTracer {
 
     render() {
         if (this.controls.changed || this.frame < 500) {
+            
             if (this.controls.changed) {
                 this.frame = 0;
             }
@@ -260,7 +262,7 @@ class WebGLTracer {
             const controlsActive = (this.controls.down || this.controls.pinching);
 
             this.material.uniforms.costVis.value = this.controls.debug;
-            this.material.uniforms.aaSize.value = 4; // (controlsActive || mobile) ? 1 : (dpr ? 4 : 4);
+            this.material.uniforms.aaSize.value = 2;
 
             var dprValue = dpr;
 
@@ -286,20 +288,22 @@ class WebGLTracer {
                     this.accumRenderTargetB.setSize(window.innerWidth*dpr, window.innerHeight*dpr);
                 }
             }
-            
+
             const camera = this.camera;
             camera.lookAt(camera.target);
             camera.updateProjectionMatrix();
             camera.updateMatrixWorld();
             camera.inverseMatrix.getInverse(camera.projectionMatrix);
             camera.inverseMatrix.multiplyMatrices(camera.matrixWorld, camera.inverseMatrix);
+            const previousApertureSize = camera.apertureSize;
             camera.apertureSize = Math.pow(1.33, 1-window.apertureSize.value);
+
+            const apertureChanged = (camera.apertureSize !== previousApertureSize)
+
+            const cameraMatrixChanged = camera.inverseMatrix.equals(camera.previousMatrix);
 
             this.material.uniforms.stripes.value = !!window.stripes.checked;
             this.material.uniforms.showFocalPlane.value = !!window.showFocalPlane.checked;
-
-            this.material.uniforms.iFrame.value = this.frame;
-            this.accumMaterial.uniforms.iFrame.value = this.frame;
 
             this.material.uniforms.iTime.value = (Date.now() - this.startTime) / 1000;
             this.material.uniforms.cameraApertureSize.value = camera.apertureSize;
@@ -307,11 +311,35 @@ class WebGLTracer {
             this.material.uniforms.iResolution.value[1] = this.renderer.domElement.height;
             this.material.uniforms.roughness.value = window.roughness.value / 100;
 
-            this.renderer.render(this.scene, camera, this.renderTarget);
-            this.accumMaterial.uniforms.accumTex.value = this.accumRenderTargetA.texture;
-            this.renderer.render(this.accumMesh, camera, this.accumRenderTargetB);
-            if (this.frame < 30 && dprValue === 1 && !this.controls.debug) {
-                this.blurMaterial.uniforms.sigma.value = 25.0 * Math.pow(1.01 - (this.frame+1) / 30, 8.0);
+            var frameStartTime = Date.now();
+            var passesPerFrame = 0;
+            var elapsed = 0;
+            var passTime = 0;
+            window.f32 = window.f32 || new Float32Array(4);
+            do {
+                this.material.uniforms.iFrame.value = this.frame;
+                this.accumMaterial.uniforms.iFrame.value = this.frame;
+
+                // Swap render targets for accumulator
+                const tmp = this.accumRenderTargetA;
+                this.accumRenderTargetA = this.accumRenderTargetB;
+                this.accumRenderTargetB = tmp;
+
+                this.renderer.render(this.scene, camera, this.renderTarget);
+                this.accumMaterial.uniforms.accumTex.value = this.accumRenderTargetA.texture;
+                this.renderer.render(this.accumMesh, camera, this.accumRenderTargetB);
+                var gl = this.renderer.getContext();
+                gl.finish();
+                gl.readPixels(0,0,1,1,gl.RGBA,gl.FLOAT,f32);
+                passesPerFrame++;
+                elapsed = Date.now() - frameStartTime;
+                passTime = (elapsed / passesPerFrame);
+                this.frame++;
+            } while (elapsed + passTime < 30 || (controlsActive && this.frame > 1 && this.frame < 5)); // Do another pass
+            console.log(passesPerFrame);
+
+            if (window.blurMove.checked && this.frame < 30 && dprValue === 1 && !this.controls.debug) {
+                this.blurMaterial.uniforms.sigma.value = 25.0 * Math.pow(1.01 - this.frame / 30, 8.0);
                 this.blurMaterial.uniforms.direction.value = 0;
                 this.blurMaterial.uniforms.tex.value = this.accumRenderTargetB.texture;
                 this.renderer.render(this.blurMesh, camera, this.accumRenderTargetA);
@@ -324,19 +352,22 @@ class WebGLTracer {
             }
             this.renderer.render(this.blitMesh, camera);
 
-            // Swap render targets for accumulator
-            const tmp = this.accumRenderTargetA;
-            this.accumRenderTargetA = this.accumRenderTargetB;
-            this.accumRenderTargetB = tmp;
+            camera.previousMatrix.copy(camera.inverseMatrix);
 
             if (this.frame === 0 && !this.firstFrameTimerFired) {
                 console.timeEnd('Load to first frame');
                 this.firstFrameTimerFired = true;
             }
-            this.frame++;
         }
     }
 }
+
+
+function LoadOBJ(path) {
+    return new Promise((resolve, reject) => {
+        new THREE.OBJLoader().load(path, resolve, null, reject);
+    });
+};
 
 (async function() {
     console.time('Load to first frame');
@@ -365,6 +396,9 @@ class WebGLTracer {
 
     const shaderRes = shaderNames.map(name => fetch(`lib/${name}.glsl`));
     const bunny = await ObjParse.load('bunny.obj');
+
+    const sponza = await LoadOBJ('sponza/sponza.obj');
+    console.log(sponza);
 
     const shaders = await Promise.all(shaderRes.map(async res => (await res).text()));
     
@@ -456,7 +490,7 @@ class WebGLTracer {
         this.setAttribute('value', this.value);
     };
         
-    window.showFocalPlane.onchange = window.stripes.onchange = function() {
+    window.showFocalPlane.onchange = window.stripes.onchange = window.blurMove.onchange = function() {
         tracer.controls.changed = true;
     };
 

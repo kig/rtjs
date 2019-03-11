@@ -44,9 +44,9 @@ Ray setupRay(vec2 fragCoord) {
 
 vec3 getColor(in Ray r, in int index) {
 	if (index < 0) {
-		return vec3(0.45);
+		return vec3(0.01);
 	} else {
-		return vec3(0.85, 0.53, 0.15);
+		return mod(r.o.z*-r.o.y*r.o.x, 0.05) > 0.005 ? vec3(0.95) : vec3(0.05);
 	}
 }
 
@@ -111,16 +111,16 @@ vec3 trace(Array vgArray, vec2 fragCoord) {
 		r.invD = 1.0 / r.d;
 		r.o = r.o + nml * epsilon;
 	}
-if (!costVis) {
-	if (bounce < 4.5) {
-		vec3 bg = vec3(0.6+clamp(-r.d.y, 0.0, 1.0), 0.7, 0.8+(0.4*r.d.x) * abs(r.d.z));
-		bg += vec3(10.0, 6.0, 4.0) * pow(clamp(dot(r.d, normalize(vec3(6.0, 10.0, 8.0))), 0.0, 1.0), 16.0);
-		bg += vec3(10.0, 8.0, 6.0) * 4.0 * pow(clamp(dot(r.d, normalize(vec3(6.0, 10.0, 8.0))), 0.0, 1.0), 256.0);
-		bg += vec3(4.0, 5.0, 7.0) * (abs(1.0 - r.d.z));
-		r.light = r.light + r.transmit * bg;
-	// } else {
-		// r.light *= 10.0 * clamp((1.0-0.5*(length(r.o-cameraPosition)-3.5)), 0.0, 1.0);
+	if (!costVis) {
+		if (bounce < 4.5) {
+			vec3 bg = vec3(0.6+clamp(-r.d.y, 0.0, 1.0), 0.7, 0.8+(0.4*r.d.x) * abs(r.d.z));
+			bg += vec3(10.0, 6.0, 4.0) * pow(clamp(dot(r.d, normalize(vec3(6.0, 10.0, 8.0))), 0.0, 1.0), 16.0);
+			bg += vec3(10.0, 8.0, 6.0) * 4.0 * pow(clamp(dot(r.d, normalize(vec3(6.0, 10.0, 8.0))), 0.0, 1.0), 256.0);
+			bg += vec3(4.0, 5.0, 7.0) * (abs(1.0 - r.d.z));
+			r.light = r.light + r.transmit * bg;
+		// } else {
+			// r.light *= 10.0 * clamp((1.0-0.5*(length(r.o-cameraPosition)-3.5)), 0.0, 1.0);
+		}
 	}
-}
 	return r.light;
 }
