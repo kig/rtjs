@@ -189,9 +189,11 @@ var getAcceleration = function(bunnyTris, scene, bvhWidth, acceleration, rays, c
 		// var accel = new SerializedVG(blob, bunnyTris[0]._color, grid.length === 1);
 
 		const voxelGrid = new VoxelGrid4(bunnyTris.bbox.min, vec3(m), grid, 0);
-		for (var i = 0; i < bunnyTris.length; i++) {
-			voxelGrid.add(bunnyTris[i]);
-		}
+		voxelGrid.addTriangles(bunnyTris);
+		window.console.log(voxelGrid.serialize());
+		// for (var i = 0; i < bunnyTris.length; i++) {
+		// 	voxelGrid.add(bunnyTris[i]);
+		// }
 		//voxelGrid.prune();
 		// console.log("VG pruned", VoxelGrid2.pruned);
 		console.log("VG count", VoxelGrid.count);
@@ -407,6 +409,9 @@ ObjParse.load('bunny.obj').then(function(bunny) {
 
 	var rays = [];
 
+	function fmt(v) {
+		return Math.round(v * 1000) / 1000;
+	}
 
 	function render() {
 		if (!controls.changed && !controls.down && !controls.wasDown && paused) return;
@@ -477,6 +482,7 @@ ObjParse.load('bunny.obj').then(function(bunny) {
 		VoxelGrid.cmpCount = 0;
 		VoxelGrid.descendCount = 0;
 		VoxelGrid4.cacheLineLoadCount = 0;
+		VoxelGrid4.memoryAccesses = 0;
 		VoxelGrid4.cacheLines = {};
 		Voxel.visitCount = 0;
 		for (var i in Voxel.visitCounts) {
@@ -496,11 +502,13 @@ ObjParse.load('bunny.obj').then(function(bunny) {
 			console.log(VoxelGrid.cmpCount, "VoxelGrid primitive intersection tests");
 			console.log(VoxelGrid4.cacheLineLoadCount, "VG cache line loads");
 			console.log(VoxelGrid4.cacheLineLoadCount * 32, "VG loads in bytes");
-			console.log(VoxelGrid.stepCount / rayCount, "VG steps per ray");
-			console.log(VoxelGrid.descendCount / rayCount, "VG descend steps per ray");
-			console.log(Voxel.visitCount / rayCount, "Voxel visits per ray");
-			console.log(VoxelGrid.cmpCount / rayCount, "VG primitive intersection tests per ray");
-			console.log(VoxelGrid4.cacheLineLoadCount / rayCount, "VG cache line loads per ray");
+			console.log(VoxelGrid4.memoryAccesses, "VG bytes memory read");
+			console.log(fmt(VoxelGrid4.cacheLineLoadCount / rayCount), "VG cache line loads per ray");
+			console.log(fmt(VoxelGrid4.memoryAccesses / rayCount), "VG bytes memory read per ray");
+			console.log(fmt(VoxelGrid.stepCount / rayCount), "VG steps per ray");
+			console.log(fmt(VoxelGrid.descendCount / rayCount), "VG descend steps per ray");
+			console.log(fmt(Voxel.visitCount / rayCount), "Voxel visits per ray");
+			console.log(fmt(VoxelGrid.cmpCount / rayCount), "VG primitive intersection tests per ray");
 		}
 
 		if (acceleration === 'BeamSphere') {
