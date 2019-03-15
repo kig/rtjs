@@ -1,13 +1,52 @@
 
 // Four-level voxel grid to accelerate triangle search
 
+uniform sampler2D arrayTex;
+uniform highp isampler2D iarrayTex;
+uniform highp int arrayTexWidth;
 
-vec3 fromGrid(vec3 coord, float scale, vec3 origin) {
-    return origin + (coord * scale);
+int readInt(Array array, int index) {
+    int v = index / array.width;
+    int u = index - (v * array.width);
+    return texelFetch(iarrayTex, ivec2(u, v), 0).r;
 }
 
-vec3 toGrid(vec3 point, float scale, vec3 origin) {
-    return (point - origin) / scale;
+float readFloat(Array array, int index) {
+    int v = index / array.width;
+    int u = index  - (v * array.width);
+    return texelFetch(arrayTex, ivec2(u, v), 0).r;
+}
+
+vec3 readVec3(Array array, int index) {
+    return vec3(
+        readFloat(array, index),
+        readFloat(array, index + 1),
+        readFloat(array, index + 2)
+    );
+}
+
+void intersectTri(in Array array, inout Ray ray, in int triIndex, inout Hit closestHit) {
+    int off = 4 + triIndex * 18;
+    vec3 v0 = readVec3(array, off);
+    vec3 e1 = readVec3(array, off+3);
+    vec3 e2 = readVec3(array, off+6);
+
+    intersectTri(v0, e1, e2, triIndex, ray, closestHit);
+}
+
+vec3 triNormal(in Array array, in vec3 point, in int triIndex) {
+    int off = 4 + triIndex * 18;
+
+    vec3 e1 = readVec3(array, off+3);
+    vec3 e2 = readVec3(array, off+6);
+    
+    float u = clamp(dot(point, e1), 0.0, 1.0);
+    float v = clamp(dot(point, e2), 0.0, 1.0);
+    vec3 n0 = readVec3(array, off+9);
+    vec3 n1 = readVec3(array, off+12);
+    vec3 n2 = readVec3(array, off+15);
+
+    return normalize(mix(mix(n0, n2, v), n1, u));
 }
 
 void intersectTris(in Array array, inout Ray ray, in int coff, in int childSize, inout Hit closestHit) {

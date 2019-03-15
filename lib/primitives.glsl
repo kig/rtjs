@@ -43,27 +43,36 @@ Hit setupHit() {
 
 // Data access
 
-uniform sampler2D arrayTex;
-uniform highp isampler2D iarrayTex;
-uniform highp int arrayTexWidth;
-
-int readInt(Array array, int index) {
-    int v = index / array.width;
-    int u = index - (v * array.width);
-    return texelFetch(iarrayTex, ivec2(u, v), 0).r;
+uint readUint(usampler2D tex, int texWidth, int index) {
+    int v = index / texWidth;
+    int u = index - (v * texWidth);
+    return texelFetch(tex, ivec2(u, v), 0).r;
 }
 
-float readFloat(Array array, int index) {
-    int v = index / array.width;
-    int u = index  - (v * array.width);
-    return texelFetch(arrayTex, ivec2(u, v), 0).r;
+int readInt(isampler2D tex, int texWidth, int index) {
+    int v = index / texWidth;
+    int u = index - (v * texWidth);
+    return texelFetch(tex, ivec2(u, v), 0).r;
 }
 
-vec3 readVec3(Array array, int index) {
+float readFloat(sampler2D tex, int texWidth, int index) {
+    int v = index / texWidth;
+    int u = index - (v * texWidth);
+    return texelFetch(tex, ivec2(u, v), 0).r;
+}
+
+vec2 readVec2(sampler2D tex, int texWidth, int index) {
+    return vec2(
+        readFloat(tex, texWidth, index),
+        readFloat(tex, texWidth, index + 1)
+    );
+}
+
+vec3 readVec3(sampler2D tex, int texWidth, int index) {
     return vec3(
-        readFloat(array, index),
-        readFloat(array, index + 1),
-        readFloat(array, index + 2)
+        readFloat(tex, texWidth, index),
+        readFloat(tex, texWidth, index + 1),
+        readFloat(tex, texWidth, index + 2)
     );
 }
 
@@ -110,6 +119,10 @@ vec3 randomVec3(in vec3 p) {
     return vec3(sqrt(1.0 - r * r) * vec2(cos(a), sin(a)), r);
 }
 
+vec4 randomBlue(in vec3 p) {
+    return randomBlue(ivec2(mod(gl_FragCoord.xy + 43758.5453123*vec2(12.9898,78.233)*p.xz + vec2(1819278.233*p.y+iFrame, floor(iFrame/1024.0)), vec2(1024.0))));
+}
+
 vec3 diskPoint(in vec2 p) {
 	vec2 ar = randomBlue(ivec2(mod(43758.5453123 * p * 4.0 + vec2(12.9898,78.233)*vec2(iFrame, floor(iFrame/1024.0)), vec2(1024.0)))).xy;
 	ar.x *= (2.0 * 3.14159);
@@ -139,6 +152,58 @@ vec3 applyMatrix4(in vec3 v, in mat4 m) {
 
 vec3 unproject(in vec3 v) {
 	return applyMatrix4(v, cameraInverseMatrix);
+}
+
+void orthoBasis(out vec3 basis[3], vec3 n)
+{
+	basis[2] = vec3(n.x, n.y, n.z);
+	basis[1] = vec3(0.0, 0.0, 0.0);
+
+	if ((n.x < 0.6) && (n.x > -0.6))
+		basis[1].x = 1.0;
+	else if ((n.y < 0.6) && (n.y > -0.6))
+		basis[1].y = 1.0;
+	else if ((n.z < 0.6) && (n.z > -0.6))
+		basis[1].z = 1.0;
+	else
+		basis[1].x = 1.0;
+
+
+	basis[0] = cross(basis[1], basis[2]);
+	basis[0] = normalize(basis[0]);
+
+	basis[1] = cross(basis[2], basis[0]);
+	basis[1] = normalize(basis[1]);
+
+}
+
+vec2 toOct(in vec3 v) {
+	vec3 p = v * (1.0 / (abs(v.x) + abs(v.y) + abs(v.z)));
+	if (p.z < 0.0) {
+		float px = p.x;
+		p.x = (1.0 - abs(p.y)) * (p.x >= 0.0 ? 1.0 : -1.0);
+		p.y = (1.0 - abs(px)) * (p.y >= 0.0 ? 1.0 : -1.0);
+	}
+    return p.xy * 0.5 + 0.5;
+}
+
+vec3 fromOct(in vec2 uv) {
+    uv = uv * 2.0 - 1.0;
+	vec3 p = vec3(uv, 1.0 - abs(uv.x) - abs(uv.y));
+	if (p.z < 0.0) {
+		float px = p.x;
+		p.x = (1.0 - abs(p.y)) * (p.x >= 0.0 ? 1.0 : -1.0);
+		p.y = (1.0 - abs(px)) * (p.y >= 0.0 ? 1.0 : -1.0);
+	}
+	return normalize(p);
+}
+
+vec3 fromGrid(vec3 coord, float scale, vec3 origin) {
+    return origin + (coord * scale);
+}
+
+vec3 toGrid(vec3 point, float scale, vec3 origin) {
+    return (point - origin) / scale;
 }
 
 
@@ -204,65 +269,76 @@ float intersectBox(in Ray ray, in vec3 origin, in vec3 dims) {
     return max(0.0, tmin);
 }
 
-void intersectTri(in Array array, inout Ray ray, in int triIndex, inout Hit closestHit) {
-        int off = 4 + triIndex * 18;
-        vec3 v0 = readVec3(array, off);
-        vec3 e1 = readVec3(array, off+3);
-        vec3 e2 = readVec3(array, off+6);
+void intersectTri(vec3 v0, vec3 e1, vec3 e2, in int triIndex, inout Ray ray, inout Hit closestHit) {
+    vec3 h = cross(ray.d, e2);
+    float a = dot(e1, h);
 
-        vec3 h = cross(ray.d, e2);
-        float a = dot(e1, h);
+    if (a > -0.00001 && a < 0.00001) {
+        return;
+    }
 
-        if (a > -0.00001 && a < 0.00001) {
-            return;
+    float f = 1.0 / a;
+    vec3 s = ray.o - v0;
+    float u = f * dot(s, h);
+
+    if (u < 0.0 - deviceEpsilon || u > 1.0 + deviceEpsilon) {
+        return;
+    }
+
+    vec3 q = cross(s, e1);
+    float v = f * dot(ray.d, q);
+
+    if (v < 0.0 - deviceEpsilon || u + v > 1.0 + deviceEpsilon*2.0) {
+        return;
+    }
+
+    // at this stage we can compute t to find out where
+    // the intersection point is on the line
+    float t = f * dot(e2, q);
+
+    if (t < 0.000001 || t > closestHit.distance - deviceEpsilon*0.1) {
+        return;
+    }
+
+    if (costVis) {
+        float borderWidth = 0.025;
+        if (u < borderWidth || v < borderWidth || u+v > 1.0-borderWidth) {
+            ray.light.g += 1.0;
+            ray.light.b += 1.0;
         }
+    }
 
-        float f = 1.0 / a;
-        vec3 s = ray.o - v0;
-        float u = f * dot(s, h);
-
-        if (u < 0.0 - deviceEpsilon || u > 1.0 + deviceEpsilon) {
-            return;
-        }
-
-        vec3 q = cross(s, e1);
-        float v = f * dot(ray.d, q);
-
-        if (v < 0.0 - deviceEpsilon || u + v > 1.0 + deviceEpsilon*2.0) {
-            return;
-        }
-
-        // at this stage we can compute t to find out where
-        // the intersection point is on the line
-        float t = f * dot(e2, q);
-
-        if (t < 0.000001 || t > closestHit.distance - deviceEpsilon*0.1) {
-            return;
-        }
-
-        if (costVis) {
-            float borderWidth = 0.025;
-            if (u < borderWidth || v < borderWidth || u+v > 1.0-borderWidth) {
-                ray.light.g += 1.0;
-                ray.light.b += 1.0;
-            }
-        }
-
-        closestHit.index = triIndex;
-        closestHit.distance = t;
+    closestHit.index = triIndex;
+    closestHit.distance = t;
 }
 
-vec3 triNormal(in Array array, in vec3 point, in int triIndex) {
-    int off = 4 + triIndex * 18;
+void intersectTri(in sampler2D triangles, in int trianglesWidth, inout Ray ray, in int triIndex, inout Hit closestHit) {
+    int off = triIndex * 9;
+    vec3 v0 = readVec3(triangles, trianglesWidth, off);
+    vec3 e1 = readVec3(triangles, trianglesWidth, off+3) - v0;
+    vec3 e2 = readVec3(triangles, trianglesWidth, off+6) - v0;
 
-    vec3 e1 = readVec3(array, off+3);
-    vec3 e2 = readVec3(array, off+6);
+    intersectTri(v0, e1, e2, triIndex, ray, closestHit);
+}
+
+vec3 triNormal(
+    in sampler2D triangles, in int trianglesWidth, 
+    in sampler2D normals, in int normalsWidth,
+    in vec3 point, in int triIndex
+) {
+    int off = triIndex * 9;
+    int nmlOff = triIndex * 6;
+
+    vec3 v0 = readVec3(triangles, trianglesWidth, off);
+    vec3 e1 = readVec3(triangles, trianglesWidth, off+3) - v0;
+    vec3 e2 = readVec3(triangles, trianglesWidth, off+6) - v0;
     
     float u = clamp(dot(point, e1), 0.0, 1.0);
     float v = clamp(dot(point, e2), 0.0, 1.0);
-    vec3 n0 = readVec3(array, off+9);
-    vec3 n1 = readVec3(array, off+12);
-    vec3 n2 = readVec3(array, off+15);
+
+    vec3 n0 = fromOct(readVec2(normals, normalsWidth, nmlOff));
+    vec3 n1 = fromOct(readVec2(normals, normalsWidth, nmlOff + 2));
+    vec3 n2 = fromOct(readVec2(normals, normalsWidth, nmlOff + 4));
 
     return normalize(mix(mix(n0, n2, v), n1, u));
 }

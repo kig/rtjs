@@ -1,25 +1,22 @@
 const mobile = /mobile/i.test(navigator.userAgent);
 const dpr = 1; // (window.devicePixelRatio || 1);
 
-class WebGLTracer {
-    constructor(vgArray, traceGLSL, blueNoiseTexture) {
+class WebGLTracer2 {
+    constructor(vg, traceGLSL, blueNoiseTexture) {
         var canvas = document.createElement( 'canvas' );
         var context = canvas.getContext( 'webgl2' );
-        var texSize = Math.ceil(Math.sqrt(vgArray.length));
-        console.log(texSize);
-        if (texSize < 2048) {
-            texSize = Math.pow(2, Math.ceil(Math.log2(texSize)));
-        }
-        console.log(texSize);
-        const paddedVgArray = new Float32Array(texSize * texSize);
-        paddedVgArray.set(vgArray);
-        this.vgArray = paddedVgArray;
-        this.vgTexture = new THREE.DataTexture( paddedVgArray, texSize, texSize, THREE.RedFormat, THREE.FloatType );
-        this.vgTexture.flipY = false;
-        this.vgTexture.needsUpdate = true;
-        this.ivgTexture = new THREE.DataTexture( new Int32Array( paddedVgArray.buffer ), texSize, texSize, THREE.RedIntegerFormat, THREE.IntType );
-        this.ivgTexture.flipY = false;
-        this.ivgTexture.needsUpdate = true;
+
+        console.time('Serialize VoxelGrid');
+        const arrays = vg.serialize();
+        console.timeEnd('Serialize VoxelGrid');
+
+        this.textures = {
+            voxelIndex: this.createTexture(arrays.voxelIndex, THREE.RedIntegerFormat, THREE.IntType),
+            triIndices: this.createTexture(arrays.triIndices, THREE.RedIntegerFormat, THREE.UnsignedShortType),
+            triangles: this.createTexture(arrays.triangles, THREE.RedFormat, THREE.FloatType),
+            normals: this.createTexture(arrays.normals, THREE.RedFormat, THREE.FloatType)
+        };
+
         this.renderer = new THREE.WebGLRenderer({ canvas, context });
         this.renderer.setSize(window.innerWidth*dpr, window.innerHeight*dpr);
         this.renderer.setClearColor(0x00ffff);
@@ -52,10 +49,22 @@ class WebGLTracer {
             uniforms: {
                 iTime: { value: 1.0 },
                 iFrame: { value: 0 },
-                arrayTex: { value: this.vgTexture },
-                iarrayTex: { value: this.ivgTexture },
+
+                triangles: { value: this.textures.triangles },
+                trianglesWidth: { value: this.textures.triangles.image.width },
+                normals: { value: this.textures.normals },
+                normalsWidth: { value: this.textures.normals.image.width },
+                voxelIndex: { value: this.textures.voxelIndex },
+                voxelIndexWidth: { value: this.textures.voxelIndex.image.width },
+                triIndices: { value: this.textures.triIndices },
+                triIndicesWidth: { value: this.textures.triIndices.image.width },
+                
+                vgOrigin: { value: new THREE.Vector3().copy(vg._origin) },
+                vgScale: { value: vg._scale },
+                vgSize: { value: vg._size },
+
                 blueNoise: { value: blueNoiseTexture },
-                arrayTexWidth: { value: texSize },
+
                 iResolution: { value: [canvas.width, canvas.height] },
                 cameraFocusPoint: { value: camera.focusPoint },
                 focusDistance: { value: 1.0 },
@@ -85,7 +94,7 @@ class WebGLTracer {
 
             precision highp float;
             precision highp int;
-
+           
             uniform vec3 cameraPosition;
             
             ${traceGLSL}
@@ -95,13 +104,12 @@ class WebGLTracer {
             out vec4 FragColor;    
 
             void main() {
-                Array array = Array(arrayTexWidth);
                 vec3 sum = vec3(0.0);
                 // for (float y = 0.0; y < aaSize; y++)
                 // for (float x = 0.0; x < aaSize; x++) {
                     float y = mod(iFrame / aaSize, aaSize);
                     float x = mod(iFrame - aaSize * y, aaSize);
-                    vec3 c = trace(array, gl_FragCoord.xy + (vec2(x,y) + vec2(random(0.5*vec2(x,y)), random(0.5+0.5*vec2(x,y)))) / aaSize);
+                    vec3 c = trace(gl_FragCoord.xy + (vec2(x,y) + vec2(random(0.5*vec2(x,y)), random(0.5+0.5*vec2(x,y)))) / aaSize);
                     sum += c;
                 // }
                 FragColor = vec4(sum, 1.0);
@@ -178,7 +186,7 @@ class WebGLTracer {
             }
 
             void main() {
-                const int radius = 50;
+                const int radius = 30;
                 
                 vec4 accum = normpdf(0.0, sigma) * texelFetch(tex, ivec2(gl_FragCoord.xy), 0);
 
@@ -251,13 +259,25 @@ class WebGLTracer {
         }
     }
 
+    createTexture(array, format, type) {
+        var texSize = Math.ceil(Math.sqrt(array.length));
+        if (texSize < 2048) {
+            texSize = Math.pow(2, Math.ceil(Math.log2(texSize)));
+        }
+        const texArray = new array.constructor(texSize * texSize);
+        texArray.set(array);
+        const tex = new THREE.DataTexture( texArray, texSize, texSize, format, type );
+        tex.flipY = false;
+        tex.needsUpdate = true;
+        return tex;
+    }
+
     render() {
-        if (this.controls.changed || this.frame < 500) {
+        if (this.controls.changed || this.frame < 31) {
             
             if (this.controls.changed) {
                 this.frame = 0;
             }
-            this.frame = 0;
 
             this.controls.changed = false;
 
@@ -307,7 +327,7 @@ class WebGLTracer {
             this.material.uniforms.stripes.value = !!window.stripes.checked;
             this.material.uniforms.showFocalPlane.value = !!window.showFocalPlane.checked;
 
-            this.material.uniforms.iTime.value = 0; //(Date.now() - this.startTime) / 1000;
+            this.material.uniforms.iTime.value = (Date.now() - this.startTime) / 1000;
             this.material.uniforms.cameraApertureSize.value = camera.apertureSize;
             this.material.uniforms.iResolution.value[0] = this.renderer.domElement.width;
             this.material.uniforms.iResolution.value[1] = this.renderer.domElement.height;
@@ -336,11 +356,11 @@ class WebGLTracer {
                 elapsed = Date.now() - frameStartTime;
                 passTime = (elapsed / passesPerFrame);
                 this.frame++;
-            } while (false && (elapsed + passTime < 30 || (controlsActive && this.frame > 1 && this.frame < 5))); // Do another pass
+            } while (false); //(elapsed + passTime < 30 || (controlsActive && this.frame > 1 && this.frame < 5)); // Do another pass
             // console.log(passesPerFrame);
 
             if (window.blurMove.checked && this.frame < 30 && dprValue === 1 && !this.controls.debug) {
-                this.blurMaterial.uniforms.sigma.value = 25.0 * Math.pow(1.01 - this.frame / 30, 8.0);
+                this.blurMaterial.uniforms.sigma.value = 15.0 * Math.pow(1.0-(0.5-0.5*Math.cos(Math.PI * this.frame / 30)), 4.0);
                 this.blurMaterial.uniforms.direction.value = 0;
                 this.blurMaterial.uniforms.tex.value = this.accumRenderTargetB.texture;
                 this.renderer.render(this.blurMesh, camera, this.accumRenderTargetA);
@@ -393,7 +413,7 @@ function LoadOBJ(path) {
 
     const blueNoiseTexture = new THREE.TextureLoader().load('blue_noise.png', onLoad);
 
-    const shaderNames = ['primitives', 'voxelgrid', 'voxelgrid_superflat', 'trace'];
+    const shaderNames = ['primitives', 'voxelgrid_superflat', 'trace2'];
 
     const shaderRes = shaderNames.map(name => fetch(`lib/${name}.glsl`));
     const bunny = await ObjParse.load('bunny.obj');
@@ -462,21 +482,17 @@ function LoadOBJ(path) {
         // Fastest JS exec: [32]
         // Nice mix of VG steps + intersects: [4,4,4]
         // + Fast JS exec: [8, 8]
-        grid = [32,2];
+        grid = [8,8];
     }
     console.timeEnd('OBJ munging');
 
     console.time('Create VoxelGrid');
-    const voxelGrid = new VoxelGrid3(bunnyTris.bbox.min, vec3(m), grid, 0);
+    const voxelGrid = new VoxelGrid4(bunnyTris.bbox.min, vec3(m), grid, 0);
     voxelGrid.addTriangles(bunnyTris);
     console.timeEnd('Create VoxelGrid');
 
-    console.time('Serialize VoxelGrid');
-    bunnyVG = voxelGrid.serialize();
-    console.timeEnd('Serialize VoxelGrid');
 
-
-    tracer = new WebGLTracer(bunnyVG, shaders.join('\n'), blueNoiseTexture);
+    tracer = new WebGLTracer2(voxelGrid, shaders.join('\n'), blueNoiseTexture);
 
     
     window.roughness.oninput = window.apertureSize.oninput = function(ev) {

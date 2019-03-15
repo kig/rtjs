@@ -484,6 +484,8 @@ ObjParse.load('bunny.obj').then(function(bunny) {
 		VoxelGrid4.cacheLineLoadCount = 0;
 		VoxelGrid4.memoryAccesses = 0;
 		VoxelGrid4.cacheLines = {};
+		VoxelGrid4.cacheLineGroups = {};
+		VoxelGrid4.memoryAccessesGroups = {};
 		Voxel.visitCount = 0;
 		for (var i in Voxel.visitCounts) {
 			Voxel.visitCounts[i] = 0;
@@ -497,12 +499,19 @@ ObjParse.load('bunny.obj').then(function(bunny) {
 		var rayCount = trace(rays, totalRayCount, accel, console);
 		
 		if (acceleration === 'VoxelGrid') {
+			const cacheBytes = {};
+			for (let i in VoxelGrid4.cacheLineGroups) {
+				cacheBytes[i] = VoxelGrid4.cacheLineGroups[i] * 32;
+			}
 			console.log(VoxelGrid.stepCount, "VoxelGrid steps");
 			console.log(VoxelGrid.descendCount, "VoxelGrid descend steps");
 			console.log(VoxelGrid.cmpCount, "VoxelGrid primitive intersection tests");
 			console.log(VoxelGrid4.cacheLineLoadCount, "VG cache line loads");
-			console.log(VoxelGrid4.cacheLineLoadCount * 32, "VG loads in bytes");
+			console.log(VoxelGrid4.cacheLineLoadCount * 32, "VG cache bytes required");
 			console.log(VoxelGrid4.memoryAccesses, "VG bytes memory read");
+			console.log(JSON.stringify(VoxelGrid4.cacheLineGroups, null, ' '), "VG cache lines per group");
+			console.log(JSON.stringify(cacheBytes, null, ' '), "VG cache bytes per group");
+			console.log(JSON.stringify(VoxelGrid4.memoryAccessesGroups, null, ' '), "VG bytes memory read per group");
 			console.log(fmt(VoxelGrid4.cacheLineLoadCount / rayCount), "VG cache line loads per ray");
 			console.log(fmt(VoxelGrid4.memoryAccesses / rayCount), "VG bytes memory read per ray");
 			console.log(fmt(VoxelGrid.stepCount / rayCount), "VG steps per ray");
