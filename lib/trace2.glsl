@@ -145,14 +145,14 @@ vec3 trace(vec2 fragCoord) {
             }
 
             float fakeBounce = 10.0;
-            for (int j = 0; j < 2; j++) {
-                // if (light.a > 8.0 && error < 0.03) {
-                //     // light = vec4(error * 10000.0, 0.0, 0.0, 1.0);
-                //     return light.rgb / max(1.0, light.a);
-                // }
-                // if ((cameraApertureSize >= 0.2 && j > 2) || (cameraApertureSize >= 0.05 && j > 4)) {
-                //     break;
-                // }
+            for (int j = 0; j < 8; j++) {
+                if (light.a > 8.0 && error < 0.03) {
+                    // light = vec4(error * 10000.0, 0.0, 0.0, 1.0);
+                    return light.rgb / max(1.0, light.a);
+                }
+                if ((cameraApertureSize >= 0.2 && j > 2) || (cameraApertureSize >= 0.05 && j > 4)) {
+                    break;
+                }
 
 
                 float fresnel = fresnel0;

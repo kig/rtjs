@@ -104,15 +104,26 @@ class WebGLTracer2 {
             out vec4 FragColor;    
 
             void main() {
-                vec3 sum = vec3(0.0);
-                // for (float y = 0.0; y < aaSize; y++)
-                // for (float x = 0.0; x < aaSize; x++) {
-                    float y = mod(iFrame / aaSize, aaSize);
-                    float x = mod(iFrame - aaSize * y, aaSize);
-                    vec3 c = trace(gl_FragCoord.xy + (vec2(x,y) + vec2(random(0.5*vec2(x,y)), random(0.5+0.5*vec2(x,y)))) / aaSize);
-                    sum += c;
-                // }
-                FragColor = vec4(sum, 1.0);
+                vec4 sum = vec4(0.0);
+                float aa = 4.0;
+                float distanceFromCenter = length(vec2(iResolution.x / iResolution.y, 1.0) * (gl_FragCoord.xy / iResolution.xy - 0.5));
+                if (distanceFromCenter < 0.1) {
+                    aa = 4.0;
+                } else if (distanceFromCenter < 0.15) {
+                    aa = 3.0;
+                } else if (distanceFromCenter < 0.35) {
+                    aa = 2.0;
+                } else {
+                    aa = 1.0;
+                }
+                for (float y = 0.0; y < aa; y++)
+                for (float x = 0.0; x < aa; x++) {
+                    float ry = mod(y + iFrame / aaSize, aaSize);
+                    float rx = mod(x + iFrame - aaSize * ry, aaSize);
+                    vec3 c = trace(gl_FragCoord.xy + (vec2(rx,ry) + vec2(random(0.5*vec2(rx,ry)), random(0.5+0.5*vec2(rx,ry)))) / aaSize);
+                    sum += vec4(c, 1.0);
+                }
+                FragColor = sum;
             }
             `,
             depthTest: false,
@@ -350,8 +361,8 @@ class WebGLTracer2 {
                 this.renderer.render(this.scene, camera, this.renderTarget);
                 this.accumMaterial.uniforms.accumTex.value = this.accumRenderTargetA.texture;
                 this.renderer.render(this.accumMesh, camera, this.accumRenderTargetB);
-                var gl = this.renderer.getContext();
-                gl.readPixels(0,0,1,1,gl.RGBA,gl.FLOAT,f32);
+                //var gl = this.renderer.getContext();
+                //gl.readPixels(0,0,1,1,gl.RGBA,gl.FLOAT,f32);
                 passesPerFrame++;
                 elapsed = Date.now() - frameStartTime;
                 passTime = (elapsed / passesPerFrame);
@@ -418,11 +429,8 @@ function LoadOBJ(path) {
     const shaderRes = shaderNames.map(name => fetch(`lib/${name}.glsl`));
     const bunny = await ObjParse.load('bunny.obj');
 
-    const sponza = await LoadOBJ('sponza/sponza.obj');
-    console.log(sponza);
-
     const shaders = await Promise.all(shaderRes.map(async res => (await res).text()));
-    
+
     console.time('OBJ munging');
     var verts = bunny.vertices;
     var normals = bunny.normals;

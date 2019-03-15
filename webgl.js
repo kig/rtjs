@@ -66,7 +66,7 @@ class WebGLTracer {
                 deviceEpsilonTrace: {value: mobile ? 0.05 : 0.01},
                 roughness: {value: 0.2},
                 costVis: {value: false},
-                aaSize: {value: 4.0},
+                aaSize: {value: 2.0},
                 stripes: { value: false },
                 showFocalPlane: { value: false }
             },
@@ -87,24 +87,35 @@ class WebGLTracer {
             precision highp int;
 
             uniform vec3 cameraPosition;
-            
+
             ${traceGLSL}
 
             uniform float aaSize;
 
-            out vec4 FragColor;    
+            out vec4 FragColor;
 
             void main() {
                 Array array = Array(arrayTexWidth);
-                vec3 sum = vec3(0.0);
-                // for (float y = 0.0; y < aaSize; y++)
-                // for (float x = 0.0; x < aaSize; x++) {
-                    float y = mod(iFrame / aaSize, aaSize);
-                    float x = mod(iFrame - aaSize * y, aaSize);
-                    vec3 c = trace(array, gl_FragCoord.xy + (vec2(x,y) + vec2(random(0.5*vec2(x,y)), random(0.5+0.5*vec2(x,y)))) / aaSize);
-                    sum += c;
-                // }
-                FragColor = vec4(sum, 1.0);
+                vec4 sum = vec4(0.0);
+                float aa = 4.0;
+                float distanceFromCenter = length(vec2(iResolution.x / iResolution.y, 1.0) * (gl_FragCoord.xy / iResolution.xy - 0.5));
+                if (distanceFromCenter < 0.1) {
+                    aa = 4.0;
+                } else if (distanceFromCenter < 0.15) {
+                    aa = 3.0;
+                } else if (distanceFromCenter < 0.35) {
+                    aa = 2.0;
+                } else {
+                    aa = 1.0;
+                }
+                for (float y = 0.0; y < aa; y++)
+                for (float x = 0.0; x < aa; x++) {
+                    float ry = mod(y + iFrame / aaSize, aaSize);
+                    float rx = mod(x + iFrame - aaSize * ry, aaSize);
+                    vec3 c = trace(array, gl_FragCoord.xy + (vec2(rx,ry) + vec2(random(0.5*vec2(rx,ry)), random(0.5+0.5*vec2(rx,ry)))) / aaSize);
+                    sum += vec4(c, 1.0);
+                }
+                FragColor = sum;
             }
             `,
             depthTest: false,
@@ -129,13 +140,13 @@ class WebGLTracer {
 
             precision highp float;
             precision highp int;
-            
+
             uniform sampler2D tex;
             uniform sampler2D accumTex;
 
             uniform float iFrame;
 
-            out vec4 FragColor;    
+            out vec4 FragColor;
 
             void main() {
                 vec4 src = texelFetch(tex, ivec2(gl_FragCoord.xy), 0);
@@ -166,12 +177,12 @@ class WebGLTracer {
 
             precision highp float;
             precision highp int;
-            
+
             uniform sampler2D tex;
             uniform float sigma;
             uniform int direction;
 
-            out vec4 FragColor;    
+            out vec4 FragColor;
 
             float normpdf(in float x, in float sigma) {
                 return 0.39894 * exp(-0.5 * x * x / (sigma * sigma)) / sigma;
@@ -179,7 +190,7 @@ class WebGLTracer {
 
             void main() {
                 const int radius = 50;
-                
+
                 vec4 accum = normpdf(0.0, sigma) * texelFetch(tex, ivec2(gl_FragCoord.xy), 0);
 
                 for (int i = 1; i <= radius; i++) {
@@ -213,10 +224,10 @@ class WebGLTracer {
 
             precision highp float;
             precision highp int;
-            
+
             uniform sampler2D tex;
 
-            out vec4 FragColor;    
+            out vec4 FragColor;
 
             void main() {
                 vec4 src = texelFetch(tex, ivec2(gl_FragCoord.xy), 0);
@@ -252,12 +263,11 @@ class WebGLTracer {
     }
 
     render() {
-        if (this.controls.changed || this.frame < 500) {
-            
+        if (this.controls.changed || this.frame < 100) {
+
             if (this.controls.changed) {
                 this.frame = 0;
             }
-            this.frame = 0;
 
             this.controls.changed = false;
 
@@ -318,6 +328,7 @@ class WebGLTracer {
             var elapsed = 0;
             var passTime = 0;
             window.f32 = window.f32 || new Float32Array(4);
+            var f = 0;
             do {
                 this.material.uniforms.iFrame.value = this.frame;
                 this.accumMaterial.uniforms.iFrame.value = this.frame;
@@ -330,14 +341,11 @@ class WebGLTracer {
                 this.renderer.render(this.scene, camera, this.renderTarget);
                 this.accumMaterial.uniforms.accumTex.value = this.accumRenderTargetA.texture;
                 this.renderer.render(this.accumMesh, camera, this.accumRenderTargetB);
-                var gl = this.renderer.getContext();
-                gl.readPixels(0,0,1,1,gl.RGBA,gl.FLOAT,f32);
                 passesPerFrame++;
                 elapsed = Date.now() - frameStartTime;
                 passTime = (elapsed / passesPerFrame);
                 this.frame++;
-            } while (false && (elapsed + passTime < 30 || (controlsActive && this.frame > 1 && this.frame < 5))); // Do another pass
-            // console.log(passesPerFrame);
+            } while (false); // Do another pass
 
             if (window.blurMove.checked && this.frame < 30 && dprValue === 1 && !this.controls.debug) {
                 this.blurMaterial.uniforms.sigma.value = 25.0 * Math.pow(1.01 - this.frame / 30, 8.0);
@@ -398,11 +406,8 @@ function LoadOBJ(path) {
     const shaderRes = shaderNames.map(name => fetch(`lib/${name}.glsl`));
     const bunny = await ObjParse.load('bunny.obj');
 
-    const sponza = await LoadOBJ('sponza/sponza.obj');
-    console.log(sponza);
-
     const shaders = await Promise.all(shaderRes.map(async res => (await res).text()));
-    
+
     console.time('OBJ munging');
     var verts = bunny.vertices;
     var normals = bunny.normals;
