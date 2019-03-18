@@ -86,8 +86,8 @@ vec4 randomBlue(ivec2 st) {
 }
 
 float random(vec2 st) {
-    return fract(fract(dot(gl_FragCoord.xy/iResolution.xy + st.xy + mod(vec2(iFrame/1000.0, iTime), vec2(1.0)),
-                         vec2(12.9898,78.233)))*
+    return fract(fract(dot(sqrt(5.0) * (gl_FragCoord.xy / iResolution + st.xy + mod(vec2(iFrame/sqrt(2.0), iTime), vec2(1.0))),
+                         vec2(12.19898,78.233)))*
         43758.5453123);
 }
 

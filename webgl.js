@@ -1,5 +1,5 @@
 const mobile = /mobile/i.test(navigator.userAgent);
-const dpr = 1; // (window.devicePixelRatio || 1);
+const dpr = (window.devicePixelRatio || 1);
 
 class WebGLTracer {
     constructor(vgArray, traceGLSL, blueNoiseTexture) {
@@ -97,25 +97,19 @@ class WebGLTracer {
             void main() {
                 Array array = Array(arrayTexWidth);
                 vec4 sum = vec4(0.0);
-                float aa = 4.0;
                 float distanceFromCenter = length(vec2(iResolution.x / iResolution.y, 1.0) * (gl_FragCoord.xy / iResolution.xy - 0.5));
-                if (distanceFromCenter < 0.1) {
-                    aa = 4.0;
-                } else if (distanceFromCenter < 0.15) {
-                    aa = 3.0;
-                } else if (distanceFromCenter < 0.35) {
-                    aa = 2.0;
-                } else {
-                    aa = 1.0;
-                }
-                for (float y = 0.0; y < aa; y++)
-                for (float x = 0.0; x < aa; x++) {
+                float samples = 9.0 - (8.0 * pow(clamp(2.0 * distanceFromCenter, 0.0, 1.0), 0.125) + random(vec2(iTime)));
+                // for (float y = 0.0; y < aa; y++)
+                // for (float x = 0.0; x < aa; x++) {
+                for (float i = 0.0; i < samples; i++) {
+                    float y = mod(i, 2.0);
+                    float x = i - y * 2.0;
                     float ry = mod(y + iFrame / aaSize, aaSize);
                     float rx = mod(x + iFrame - aaSize * ry, aaSize);
                     vec3 c = trace(array, gl_FragCoord.xy + (vec2(rx,ry) + vec2(random(0.5*vec2(rx,ry)), random(0.5+0.5*vec2(rx,ry)))) / aaSize);
                     sum += vec4(c, 1.0);
                 }
-                FragColor = sum;
+                FragColor = sum; //vec4(sum.rgb, 1.0);
             }
             `,
             depthTest: false,
@@ -263,7 +257,7 @@ class WebGLTracer {
     }
 
     render() {
-        if (this.controls.changed || this.frame < 100) {
+        if (this.controls.changed || this.frame < 500) {
 
             if (this.controls.changed) {
                 this.frame = 0;
