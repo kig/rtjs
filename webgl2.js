@@ -1,5 +1,5 @@
 const mobile = /mobile/i.test(navigator.userAgent);
-const dpr = 1; // (window.devicePixelRatio || 1);
+const dpr = (window.devicePixelRatio || 1);
 
 class WebGLTracer2 {
     constructor(vg, traceGLSL, blueNoiseTexture) {
@@ -9,6 +9,26 @@ class WebGLTracer2 {
         console.time('Serialize VoxelGrid');
         const arrays = vg.serialize();
         console.timeEnd('Serialize VoxelGrid');
+
+        this.stats = {
+            element: document.createElement('div'),
+            fields: {},
+            log: function(name, msg) {
+                if (!this.fields[name]) {
+                    this.fields[name] = document.createElement('div');
+                    this.fields[name].titleEl = document.createElement('span');
+                    this.fields[name].valueEl = document.createElement('span');
+                    this.fields[name].titleEl.textContent = name;
+                    this.fields[name].append(this.fields[name].titleEl);
+                    this.fields[name].append(this.fields[name].valueEl);
+                    this.element.append(this.fields[name]);
+                }
+                this.fields[name].valueEl.textContent = msg;
+            }
+        };
+        this.stats.element.className = 'stats';
+
+        document.body.appendChild(this.stats.element);
 
         this.textures = {
             voxelIndex: this.createTexture(arrays.voxelIndex, THREE.RedIntegerFormat, THREE.IntType),
@@ -109,6 +129,18 @@ class WebGLTracer2 {
                 vec4 sum = vec4(0.0);
                 float distanceFromCenter = length(vec2(iResolution.x / iResolution.y, 1.0) * (gl_FragCoord.xy / iResolution.xy - 0.5));
                 float samples = (rayBudget * 3.0) - ((rayBudget * 2.0) * pow(clamp(2.0 * distanceFromCenter, 0.0, 1.0), 0.125) + random(vec2(iTime)));
+                samples = max(1.0, samples);
+                if (iFrame == 0.0) {
+                    samples = max(1.0, samples);
+                }
+                // if (samples < 0.0) {
+                //     vec2 cell = mod(floor(gl_FragCoord.xy / 16.0), vec2(4.0));
+                //     if ((cell.y * 4.0 + cell.x) / 15.0 > abs(fract(samples*100.0))) {
+                //         FragColor = vec4(0.0);
+                //         discard;
+                //         return;
+                //     }
+                // }
                 for (float i = 0.0; i < samples; i++) {
                     float y = mod(i, 2.0);
                     float x = i - y * 2.0;
@@ -287,49 +319,6 @@ class WebGLTracer2 {
             this.frameTime = Date.now() - this.frameStartTime;
             this.frameStartTime = Date.now();
 
-            if (this.frameTime < 15) {
-                this.rayBudget *= 1.05;
-            } else if (this.frameTime > 20) {
-                this.rayBudget = Math.max(1, this.rayBudget*0.8);
-            }
-            // console.log(this.rayBudget);
-            
-            if (this.controls.changed) {
-                this.frame = 0;
-            }
-
-            this.controls.changed = false;
-
-            const controlsActive = (this.controls.down || this.controls.pinching);
-
-            this.material.uniforms.costVis.value = this.controls.debug;
-            this.material.uniforms.aaSize.value = 2;
-
-            var dprValue = dpr;
-
-            if (controlsActive) {
-                if (this.renderer.domElement.width !== window.innerWidth ||
-                    this.renderer.domElement.height !== window.innerHeight
-                ) {
-                    this.frame = 0;
-                    this.renderer.setSize(window.innerWidth, window.innerHeight);
-                    this.renderTarget.setSize(window.innerWidth, window.innerHeight);
-                    this.accumRenderTargetA.setSize(window.innerWidth, window.innerHeight);
-                    this.accumRenderTargetB.setSize(window.innerWidth, window.innerHeight);
-                }
-                dprValue = 1;
-            } else {
-                if (this.renderer.domElement.width !== window.innerWidth*dpr ||
-                    this.renderer.domElement.height !== window.innerHeight*dpr
-                ) {
-                    this.frame = 0;
-                    this.renderer.setSize(window.innerWidth*dpr, window.innerHeight*dpr);
-                    this.renderTarget.setSize(window.innerWidth*dpr, window.innerHeight*dpr);
-                    this.accumRenderTargetA.setSize(window.innerWidth*dpr, window.innerHeight*dpr);
-                    this.accumRenderTargetB.setSize(window.innerWidth*dpr, window.innerHeight*dpr);
-                }
-            }
-
             const camera = this.camera;
             camera.lookAt(camera.target);
             camera.updateProjectionMatrix();
@@ -341,7 +330,57 @@ class WebGLTracer2 {
 
             const apertureChanged = (camera.apertureSize !== previousApertureSize)
 
-            const cameraMatrixChanged = camera.inverseMatrix.equals(camera.previousMatrix);
+            const cameraMatrixChanged = !camera.inverseMatrix.equals(camera.previousMatrix);
+
+            const controlsActive = (cameraMatrixChanged || this.controls.down || this.controls.pinching);
+
+            if (this.frameTime < 20) {
+                this.rayBudget *= 1.05;
+            } else if (this.frameTime > 40) {
+                this.rayBudget = Math.max(0.1, this.rayBudget*0.8);
+            }
+            this.stats.log('Frame time', Math.round(this.frameTime*100)/100 + ' ms');
+            this.stats.log('Ray budget', Math.round(this.rayBudget*100)/100);
+            
+            if (this.controls.changed) {
+                this.frame = 0;
+            }
+
+            this.controls.changed = false;
+
+            this.material.uniforms.costVis.value = this.controls.debug;
+            this.material.uniforms.aaSize.value = 2;
+
+            var dprValue = dpr;
+
+            if (controlsActive) {
+                if (this.renderer.domElement.width !== window.innerWidth ||
+                    this.renderer.domElement.height !== window.innerHeight
+                ) {
+                    this.rayBudget = 1;
+                    this.frame = 0;
+                    this.renderer.setSize(window.innerWidth, window.innerHeight);
+                    this.renderTarget.setSize(window.innerWidth, window.innerHeight);
+                    this.accumRenderTargetA.setSize(window.innerWidth, window.innerHeight);
+                    this.accumRenderTargetB.setSize(window.innerWidth, window.innerHeight);
+                }
+                dprValue = 1;
+            } else {
+                if (this.renderer.domElement.width !== window.innerWidth*dpr ||
+                    this.renderer.domElement.height !== window.innerHeight*dpr
+                ) {
+                    this.rayBudget /= dpr * dpr;
+                    this.frame = 0;
+                    this.renderer.setSize(window.innerWidth*dpr, window.innerHeight*dpr);
+                    this.renderTarget.setSize(window.innerWidth*dpr, window.innerHeight*dpr);
+                    this.accumRenderTargetA.setSize(window.innerWidth*dpr, window.innerHeight*dpr);
+                    this.accumRenderTargetB.setSize(window.innerWidth*dpr, window.innerHeight*dpr);
+                }
+            }
+
+            if (this.frame === 0) {
+                this.rayBudget = Math.max(1, this.rayBudget);
+            }
 
             this.material.uniforms.stripes.value = !!window.stripes.checked;
             this.material.uniforms.showFocalPlane.value = !!window.showFocalPlane.checked;
@@ -351,13 +390,7 @@ class WebGLTracer2 {
             this.material.uniforms.iResolution.value[0] = this.renderer.domElement.width;
             this.material.uniforms.iResolution.value[1] = this.renderer.domElement.height;
             this.material.uniforms.roughness.value = window.roughness.value / 100;
-            if (!controlsActive) {
-                if (this.frame < this.rayBudget * 4) {
-                    this.material.uniforms.rayBudget.value = this.rayBudget * 4 - this.frame;
-                }
-            } else {
-                this.material.uniforms.rayBudget.value = this.rayBudget;
-            }
+            this.material.uniforms.rayBudget.value = this.rayBudget;
 
             this.material.uniforms.iFrame.value = this.frame;
             this.accumMaterial.uniforms.iFrame.value = this.frame;
