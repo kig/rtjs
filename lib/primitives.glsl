@@ -86,9 +86,7 @@ vec4 randomBlue(ivec2 st) {
 }
 
 float random(vec2 st) {
-    return fract(fract(dot(sqrt(5.0) * (gl_FragCoord.xy / iResolution + st.xy + mod(vec2(iFrame/sqrt(2.0), iTime), vec2(1.0))),
-                         vec2(12.19898,78.233)))*
-        43758.5453123);
+    return fract(fract(dot(sqrt(5.0) * (gl_FragCoord.xy / iResolution + st.xy + mod(vec2(iFrame/sqrt(2.0), iTime), vec2(1.0))), vec2(12.19898,78.233)))* 43758.5453123);
 }
 
 float InterleavedGradientNoise(in vec2 xy) {
@@ -111,12 +109,26 @@ vec3 diskPointU(in vec3 p) {
 	return vec3(cos(a) * sr, sin(a) * sr, 0.0);
 }
 
-vec3 randomVec3(in vec3 p) {
-	vec2 ar = randomBlue(ivec2(mod(gl_FragCoord.xy + 43758.5453123*vec2(12.9898,78.233)*p.xz + vec2(1819278.233*p.y+iFrame, floor(iFrame/1024.0)), vec2(1024.0)))).zw;
+vec3 randomVec3(in ivec2 st) {
+	vec2 ar = randomBlue(st).zw;
 	float a = ar.x * (2.0 * 3.14159);
 	float r = ar.y;
     r = 2.0 * r - 1.0;
     return vec3(sqrt(1.0 - r * r) * vec2(cos(a), sin(a)), r);
+}
+
+vec3 randomVec3(in vec3 p) {
+	return randomVec3(
+        ivec2(
+            mod(sqrt(5.0) * (
+                gl_FragCoord.xy + 
+                43758.5453123 * dot(vec2(12.9898,78.233), p.xz) + 
+                vec2(1819278.233 * p.y + iFrame, iTime)),
+
+                vec2(1024.0)
+            )
+        )
+    );
 }
 
 vec4 randomBlue(in vec3 p) {

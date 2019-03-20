@@ -49,6 +49,7 @@ class WebGLTracer2 {
             uniforms: {
                 iTime: { value: 1.0 },
                 iFrame: { value: 0 },
+                rayBudget: { value: 1 },
 
                 triangles: { value: this.textures.triangles },
                 trianglesWidth: { value: this.textures.triangles.image.width },
@@ -100,24 +101,17 @@ class WebGLTracer2 {
             ${traceGLSL}
 
             uniform float aaSize;
+            uniform float rayBudget;
 
             out vec4 FragColor;    
 
             void main() {
                 vec4 sum = vec4(0.0);
-                float aa = 4.0;
                 float distanceFromCenter = length(vec2(iResolution.x / iResolution.y, 1.0) * (gl_FragCoord.xy / iResolution.xy - 0.5));
-                if (distanceFromCenter < 0.1) {
-                    aa = 4.0;
-                } else if (distanceFromCenter < 0.15) {
-                    aa = 3.0;
-                } else if (distanceFromCenter < 0.35) {
-                    aa = 2.0;
-                } else {
-                    aa = 1.0;
-                }
-                for (float y = 0.0; y < aa; y++)
-                for (float x = 0.0; x < aa; x++) {
+                float samples = (rayBudget * 3.0) - ((rayBudget * 2.0) * pow(clamp(2.0 * distanceFromCenter, 0.0, 1.0), 0.125) + random(vec2(iTime)));
+                for (float i = 0.0; i < samples; i++) {
+                    float y = mod(i, 2.0);
+                    float x = i - y * 2.0;
                     float ry = mod(y + iFrame / aaSize, aaSize);
                     float rx = mod(x + iFrame - aaSize * ry, aaSize);
                     vec3 c = trace(gl_FragCoord.xy + (vec2(rx,ry) + vec2(random(0.5*vec2(rx,ry)), random(0.5+0.5*vec2(rx,ry)))) / aaSize);
@@ -265,9 +259,13 @@ class WebGLTracer2 {
         camera.positionOffset.y = 0.1;
         this.startTime = Date.now();
 
+        this.rayBudget = 1;
+        this.frameTime = 0;
+        this.frameStartTime = Date.now();
+
         window.onresize = () => {
             this.controls.changed = true;
-        }
+        };
     }
 
     createTexture(array, format, type) {
@@ -284,7 +282,17 @@ class WebGLTracer2 {
     }
 
     render() {
-        if (this.controls.changed || this.frame < 31) {
+        if (this.controls.changed || this.frame < 500) {
+
+            this.frameTime = Date.now() - this.frameStartTime;
+            this.frameStartTime = Date.now();
+
+            if (this.frameTime < 15) {
+                this.rayBudget *= 1.05;
+            } else if (this.frameTime > 20) {
+                this.rayBudget = Math.max(1, this.rayBudget*0.8);
+            }
+            // console.log(this.rayBudget);
             
             if (this.controls.changed) {
                 this.frame = 0;
@@ -343,32 +351,26 @@ class WebGLTracer2 {
             this.material.uniforms.iResolution.value[0] = this.renderer.domElement.width;
             this.material.uniforms.iResolution.value[1] = this.renderer.domElement.height;
             this.material.uniforms.roughness.value = window.roughness.value / 100;
+            if (!controlsActive) {
+                if (this.frame < this.rayBudget * 4) {
+                    this.material.uniforms.rayBudget.value = this.rayBudget * 4 - this.frame;
+                }
+            } else {
+                this.material.uniforms.rayBudget.value = this.rayBudget;
+            }
 
-            var frameStartTime = Date.now();
-            var passesPerFrame = 0;
-            var elapsed = 0;
-            var passTime = 0;
-            window.f32 = window.f32 || new Float32Array(4);
-            do {
-                this.material.uniforms.iFrame.value = this.frame;
-                this.accumMaterial.uniforms.iFrame.value = this.frame;
+            this.material.uniforms.iFrame.value = this.frame;
+            this.accumMaterial.uniforms.iFrame.value = this.frame;
 
-                // Swap render targets for accumulator
-                const tmp = this.accumRenderTargetA;
-                this.accumRenderTargetA = this.accumRenderTargetB;
-                this.accumRenderTargetB = tmp;
+            // Swap render targets for accumulator
+            const tmp = this.accumRenderTargetA;
+            this.accumRenderTargetA = this.accumRenderTargetB;
+            this.accumRenderTargetB = tmp;
 
-                this.renderer.render(this.scene, camera, this.renderTarget);
-                this.accumMaterial.uniforms.accumTex.value = this.accumRenderTargetA.texture;
-                this.renderer.render(this.accumMesh, camera, this.accumRenderTargetB);
-                //var gl = this.renderer.getContext();
-                //gl.readPixels(0,0,1,1,gl.RGBA,gl.FLOAT,f32);
-                passesPerFrame++;
-                elapsed = Date.now() - frameStartTime;
-                passTime = (elapsed / passesPerFrame);
-                this.frame++;
-            } while (false); //(elapsed + passTime < 30 || (controlsActive && this.frame > 1 && this.frame < 5)); // Do another pass
-            // console.log(passesPerFrame);
+            this.renderer.render(this.scene, camera, this.renderTarget);
+            this.accumMaterial.uniforms.accumTex.value = this.accumRenderTargetA.texture;
+            this.renderer.render(this.accumMesh, camera, this.accumRenderTargetB);
+            this.frame += this.rayBudget;
 
             if (window.blurMove.checked && this.frame < 30 && dprValue === 1 && !this.controls.debug) {
                 this.blurMaterial.uniforms.sigma.value = 15.0 * Math.pow(1.0-(0.5-0.5*Math.cos(Math.PI * this.frame / 30)), 4.0);
