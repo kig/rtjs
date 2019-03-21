@@ -44,14 +44,9 @@ Ray setupRay(vec2 fragCoord, float off) {
 
 vec3 getColor(in Ray r, in int index) {
 	if (index < 0) {
-		return vec3(0.05);
+		return vec3(0.01);
 	} else {
-			if (stripes) {
-				return mix(vec3(0.95, 0.66, 0.15), vec3(0.05), pow(fract(roughness*dot(r.o, r.o)*10.0), 0.125));
-			} else {
-		return vec3(0.95, 0.66, 0.15);
-
-			}
+		return mix(vec3(0.95, 0.66, 0.15), vec3(0.05), float(stripes) * pow(fract(roughness*dot(r.o, r.o)*10.0), 0.125));
 	}
 }
 
