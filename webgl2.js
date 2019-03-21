@@ -127,12 +127,14 @@ class WebGLTracer2 {
 
             void main() {
                 vec4 sum = vec4(0.0);
-                float distanceFromCenter = length(vec2(iResolution.x / iResolution.y, 1.0) * (gl_FragCoord.xy / iResolution.xy - 0.5));
-                float samples = (rayBudget * 3.0) - ((rayBudget * 2.0) * pow(clamp(2.0 * distanceFromCenter, 0.0, 1.0), 0.125) + random(vec2(iTime)));
+                vec2 centerToPixel = vec2(iResolution.x / iResolution.y, 1.0) * (gl_FragCoord.xy / iResolution.xy - 0.5);
+                float distanceToCenter = length(centerToPixel);
+                float samples = (rayBudget * 3.0) - ((rayBudget * 2.0) * pow(clamp(2.0 * distanceToCenter, 0.0, 1.0), 0.125) + random(vec2(iTime)));
                 samples = max(1.0, samples);
                 if (iFrame == 0.0) {
                     samples = max(1.0, samples);
                 }
+                samples += pow(max(0.0, 0.3 - distanceToCenter) / 0.3, 4.0) * 60.0;
                 // if (samples < 0.0) {
                 //     vec2 cell = mod(floor(gl_FragCoord.xy / 16.0), vec2(4.0));
                 //     if ((cell.y * 4.0 + cell.x) / 15.0 > abs(fract(samples*100.0))) {
@@ -146,7 +148,7 @@ class WebGLTracer2 {
                     float x = i - y * 2.0;
                     float ry = mod(y + iFrame / aaSize, aaSize);
                     float rx = mod(x + iFrame - aaSize * ry, aaSize);
-                    vec3 c = trace(gl_FragCoord.xy + (vec2(rx,ry) + vec2(random(0.5*vec2(rx,ry)), random(0.5+0.5*vec2(rx,ry)))) / aaSize);
+                    vec3 c = trace(gl_FragCoord.xy + (vec2(rx,ry) + vec2(random(i+0.5*vec2(rx,ry)), random(i+0.5+0.5*vec2(rx,ry)))) / aaSize);
                     sum += vec4(c, 1.0);
                 }
                 FragColor = sum;
