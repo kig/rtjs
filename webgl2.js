@@ -129,7 +129,7 @@ class WebGLTracer2 {
                 vec4 sum = vec4(0.0);
                 vec2 centerToPixel = vec2(iResolution.x / iResolution.y, 1.0) * (gl_FragCoord.xy / iResolution.xy - 0.5);
                 float distanceToCenter = length(centerToPixel);
-                float samples = rayBudget * (pow(clamp(0.5 - (distanceToCenter - 0.1), 0.0, 0.5) / 0.5, 8.0) * 10.0 + 3.0 - (2.0 * pow(clamp(2.0 * distanceToCenter, 0.0, 1.0), 0.125))) + random(vec2(iTime));
+                float samples = rayBudget * 0.66 * (pow(clamp(0.5 - (distanceToCenter - 0.1), 0.0, 0.5) / 0.5, 16.0) * max(30.0-iFrame*5.0, 5.0) + 3.0 - (2.0 * pow(clamp(2.0 * distanceToCenter, 0.0, 1.0), 0.125))) + random(vec2(iTime));
                 samples = max(1.0, samples);
                 if (iFrame == 0.0) {
                     samples = max(1.0, samples);
@@ -293,6 +293,7 @@ class WebGLTracer2 {
         this.startTime = Date.now();
 
         this.rayBudget = 1;
+        this.movingRayBudget = 1;
         this.frameTime = 0;
         this.frameStartTime = Date.now();
 
@@ -335,18 +336,22 @@ class WebGLTracer2 {
 
             const controlsActive = (cameraMatrixChanged || this.controls.down || this.controls.pinching);
 
+            if (this.controls.changed) {
+                this.frame = 0;
+                this.rayBudget = this.movingRayBudget;
+            }
+
             if (this.frameTime < 20) {
                 this.rayBudget *= 1.05;
             } else if (this.frameTime > 40) {
                 this.rayBudget = Math.max(0.1, this.rayBudget*0.8);
             }
+            if (this.frame === 10) {
+                this.movingRayBudget = this.rayBudget;
+            }
             this.stats.log('Frame time', Math.round(this.frameTime*100)/100 + ' ms');
             this.stats.log('Ray budget', Math.round(this.rayBudget*100)/100);
             
-            if (this.controls.changed) {
-                this.frame = 0;
-            }
-
             this.controls.changed = false;
 
             this.material.uniforms.costVis.value = this.controls.debug;
@@ -377,10 +382,6 @@ class WebGLTracer2 {
                     this.accumRenderTargetA.setSize(window.innerWidth*dpr, window.innerHeight*dpr);
                     this.accumRenderTargetB.setSize(window.innerWidth*dpr, window.innerHeight*dpr);
                 }
-            }
-
-            if (this.frame === 0) {
-                this.rayBudget = Math.max(1, this.rayBudget);
             }
 
             this.material.uniforms.stripes.value = !!window.stripes.checked;
