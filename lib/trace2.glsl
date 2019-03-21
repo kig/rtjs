@@ -44,10 +44,14 @@ Ray setupRay(vec2 fragCoord, float off) {
 
 vec3 getColor(in Ray r, in int index) {
 	if (index < 0) {
-		return vec3(0.1);
+		return vec3(0.05);
 	} else {
-		float f = mod(r.o.z*-r.o.y*r.o.x, 0.05);
-		return f > 0.008 ? vec3(0.1) : vec3(0.95, 0.66, 0.15);
+			if (stripes) {
+				return mix(vec3(0.95, 0.66, 0.15), vec3(0.05), pow(fract(roughness*dot(r.o, r.o)*10.0), 0.125));
+			} else {
+		return vec3(0.95, 0.66, 0.15);
+
+			}
 	}
 }
 
@@ -114,13 +118,12 @@ vec3 trace(vec2 fragCoord) {
 	if (hitScene) {
 		float fakeBounce = 0.0;
 		for (int i = 0; i < 5; i++) {
-			float troughness = mod(r.o.z*-r.o.y*r.o.x, 0.05) > 0.008 ? roughness : 0.05;
 			float idx = fragCoord.y * iResolution.x * 4.0 + fragCoord.x * 4.0 + fakeBounce;
 			ivec2 idxv = ivec2(mod(idx / 1024.0, 1024.0), mod(idx, 1024.0));
 			if (stripes) {
 				r.d = normalize(mix(reflect(r.d, nml), nml + randomVec3(idxv), (1.0-fresnel) * fract(roughness*dot(r.o, r.o)*10.0)));// + (abs(dot(r.d, nml)) * roughness) * randomVec3(5.0+r.o+r.d));
 			} else {
-				r.d = normalize(mix(reflect(r.d, nml), nml + randomVec3(idxv), (1.0-fresnel) * (hit.index >= 0 ? troughness : 0.05)));// + (abs(dot(r.d, nml)) * roughness) * randomVec3(5.0+r.o+r.d));
+				r.d = normalize(mix(reflect(r.d, nml), nml + randomVec3(idxv), (1.0-fresnel) * (hit.index >= 0 ? roughness : 0.05)));// + (abs(dot(r.d, nml)) * roughness) * randomVec3(5.0+r.o+r.d));
 			}
 			r.invD = 1.0 / r.d;
 			r.o = r.o + nml * epsilon;
