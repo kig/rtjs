@@ -3,7 +3,7 @@
 
 uniform float deviceEpsilonTrace;
 
-uniform vec3 cameraFocusPoint;
+uniform float cameraFocusDistance;
 uniform float focusDistance;
 uniform float cameraApertureSize;
 
@@ -24,9 +24,7 @@ Ray setupRay(vec2 fragCoord, float off) {
 
 	// Camera aperture simulation
 
-	vec3 cameraFocusVector = cameraFocusPoint - origin;
-	float focusDistance = dot(cameraFocusVector, direction);
-	vec3 target = origin + (direction * focusDistance);
+	vec3 target = origin + (direction * cameraFocusDistance);
 
 	origin += applyMatrix4(diskPoint(fragCoord+off) * cameraApertureSize, cameraMatrixWorld);
 	direction = normalize(target - origin);
@@ -63,11 +61,9 @@ bool traceBounce(inout Ray r, in Plane plane, in vec3 bg0, out Hit hit, out floa
 		return false;
 	}
 	if (showFocalPlane && isPrimaryRay) {
-		vec3 cameraFocusVector = cameraFocusPoint - r.o;
-		float focusDistance = (dot(cameraFocusVector, r.d));
 		r.light.r += 10.0 * (
-			2.0 * clamp(0.1 / cameraApertureSize - abs(hit.distance - focusDistance), 0.0, 0.1) +
-			200.0 * max(0.0, 0.03 - abs(hit.distance - focusDistance)) 
+			2.0 * clamp(0.1 / cameraApertureSize - abs(hit.distance - cameraFocusDistance), 0.0, 0.1) +
+			200.0 * max(0.0, 0.03 - abs(hit.distance - cameraFocusDistance)) 
 		);
 	}
 	r.lastTested = hit.index;

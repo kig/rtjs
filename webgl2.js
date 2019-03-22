@@ -6,6 +6,8 @@ class WebGLTracer2 {
         var canvas = document.createElement( 'canvas' );
         var context = canvas.getContext( 'webgl2' );
 
+        this.voxelGrid = vg;
+
         console.time('Serialize VoxelGrid');
         const arrays = vg.serialize();
         console.timeEnd('Serialize VoxelGrid');
@@ -57,7 +59,8 @@ class WebGLTracer2 {
 
         var camera = new THREE.PerspectiveCamera(55, 1, 0.1, 100);
         camera.target = new THREE.Vector3(0, 1.1, 0);
-        camera.focusPoint = vec3(-0.9, 1.3, 0.3);
+        camera.focusPoint = new THREE.Vector3(-0.9, 1.3, 0.3);
+        camera.focusDistance = camera.focusPoint.distanceTo(camera.position);
 		camera.apertureSize = Math.pow(1.33, -11);
         camera.previousMatrix = new THREE.Matrix4();
         camera.inverseMatrix = new THREE.Matrix4()
@@ -87,7 +90,7 @@ class WebGLTracer2 {
                 blueNoise: { value: blueNoiseTexture },
 
                 iResolution: { value: [canvas.width, canvas.height] },
-                cameraFocusPoint: { value: camera.focusPoint },
+                cameraFocusDistance: { value: camera.focusDistance },
                 focusDistance: { value: 1.0 },
                 cameraApertureSize: { value: camera.apertureSize },
                 cameraInverseMatrix: { value: camera.inverseMatrix },
@@ -98,7 +101,8 @@ class WebGLTracer2 {
                 costVis: {value: false},
                 aaSize: {value: 4.0},
                 stripes: { value: false },
-                showFocalPlane: { value: false }
+                showFocalPlane: { value: false },
+                showBoost: { value: false }
             },
             vertexShader: `#version 300 es
 
@@ -122,17 +126,29 @@ class WebGLTracer2 {
 
             uniform float aaSize;
             uniform float rayBudget;
+            uniform bool showBoost;
 
             out vec4 FragColor;    
 
             void main() {
                 vec4 sum = vec4(0.0);
                 vec2 centerToPixel = vec2(iResolution.x / iResolution.y, 1.0) * (gl_FragCoord.xy / iResolution.xy - 0.5);
-                float distanceToCenter = length(centerToPixel);
-                float samples = rayBudget * 0.66 * (pow(clamp(0.5 - (distanceToCenter - 0.1), 0.0, 0.5) / 0.5, 16.0) * max(30.0-iFrame*5.0, 5.0) + 3.0 - (2.0 * pow(clamp(2.0 * distanceToCenter, 0.0, 1.0), 0.125))) + random(vec2(iTime));
-                samples = max(1.0, samples);
+                vec2 centerToPixel8x8 = vec2(iResolution.x / iResolution.y, 1.0) * (8.0*floor(gl_FragCoord.xy / 8.0) / iResolution.xy - 0.5);
+                float distanceToCenterPx = length(centerToPixel);
+                float distanceToCenter = length(centerToPixel8x8);
+                float boostRadius = max(0.2, rayBudget * 0.4);
+                float fullBoostRadius = max(0.05, rayBudget * 0.1);
+                float boostExponent = 8.0 / max(0.5, rayBudget);
+                float fullBoostSamples = max(0.5, rayBudget) * 30.0;
+                float boostFactor = 1.0 - clamp((distanceToCenter - fullBoostRadius) / boostRadius, 0.0, 1.0);
+                float boost = pow(boostFactor, boostExponent) * fullBoostSamples;
+                float sampleCountJitter = 0.0; //fract(random(vec2(((1.0+sqrt(2.0)))+iTime, (9.0+sqrt(221.0))*0.1+iTime)));
+
+                float samples = 1.0 + boost + sampleCountJitter;
+
+                // samples = max(1.0, samples);
                 if (iFrame == 0.0) {
-                    samples = max(1.0, samples);
+                    // samples = max(1.0, samples);
                 }
                 // if (samples < 0.0) {
                 //     vec2 cell = mod(floor(gl_FragCoord.xy / 16.0), vec2(4.0));
@@ -149,6 +165,15 @@ class WebGLTracer2 {
                     float rx = mod(x + iFrame - aaSize * ry, aaSize);
                     vec3 c = trace(gl_FragCoord.xy + (vec2(rx,ry) + vec2(random(i+0.5*vec2(rx,ry)), random(i+0.5+0.5*vec2(rx,ry)))) / aaSize);
                     sum += vec4(c, 1.0);
+                }
+                if (showBoost) {
+                    sum.g += samples;
+                    if (distanceToCenterPx < fullBoostRadius) {
+                        if (distanceToCenterPx < 0.002 || (fullBoostRadius - distanceToCenterPx) < 0.002) {
+                            sum.r += samples;
+                            sum.gb *= 0.0;
+                        }
+                    }
                 }
                 FragColor = sum;
             }
@@ -315,8 +340,35 @@ class WebGLTracer2 {
         return tex;
     }
 
+    setupRay(p) {
+        const { x, y } = p;
+        const { width, height } = this.renderer.domElement;
+
+        const uv = new THREE.Vector2((x/width)*2 - 1, -(y/height)*2 + 1);
+        
+        const direction = new THREE.Vector3( uv.x, uv.y, 1 );
+        direction
+            .applyMatrix4( this.camera.inverseMatrix )
+            .sub( this.camera.position )
+            .normalize();
+        
+        const ray = new Ray(this.camera.position, direction, 0);
+        return ray;
+    }
+
     render() {
-        if (this.controls.changed || this.frame < 500) {
+        if (this.controls.changed || this.frame < 1) {
+
+            if (this.controls.focusPoint) {
+                const ray = this.setupRay(this.controls.focusPoint);
+                this.controls.focusPoint = null;
+                const hit = this.voxelGrid.intersect(ray);
+                if (hit && hit.obj) {
+                    this.camera.focusPoint.copy(add(ray.o, mulS(ray.d, hit.distance)));
+                }
+            }
+
+            this.camera.focusDistance = this.camera.position.distanceTo(this.camera.focusPoint);
 
             this.frameTime = Date.now() - this.frameStartTime;
             this.frameStartTime = Date.now();
@@ -338,16 +390,12 @@ class WebGLTracer2 {
 
             if (this.controls.changed) {
                 this.frame = 0;
-                this.rayBudget = this.movingRayBudget;
             }
 
             if (this.frameTime < 20) {
-                this.rayBudget *= 1.05;
+                this.rayBudget *= 1.1;
             } else if (this.frameTime > 40) {
-                this.rayBudget = Math.max(0.1, this.rayBudget*0.8);
-            }
-            if (this.frame === 10) {
-                this.movingRayBudget = this.rayBudget;
+                this.rayBudget = Math.max(0.05, this.rayBudget*0.8);
             }
             this.stats.log('Frame time', Math.round(this.frameTime*100)/100 + ' ms');
             this.stats.log('Ray budget', Math.round(this.rayBudget*100)/100);
@@ -386,6 +434,7 @@ class WebGLTracer2 {
 
             this.material.uniforms.stripes.value = !!window.stripes.checked;
             this.material.uniforms.showFocalPlane.value = !!window.showFocalPlane.checked;
+            this.material.uniforms.showBoost.value = !!window.showBoost.checked;
 
             this.material.uniforms.iTime.value = (Date.now() - this.startTime) / 1000;
             this.material.uniforms.cameraApertureSize.value = camera.apertureSize;
@@ -393,6 +442,7 @@ class WebGLTracer2 {
             this.material.uniforms.iResolution.value[1] = this.renderer.domElement.height;
             this.material.uniforms.roughness.value = window.roughness.value / 100;
             this.material.uniforms.rayBudget.value = this.rayBudget;
+            this.material.uniforms.cameraFocusDistance.value = this.camera.focusDistance;
 
             this.material.uniforms.iFrame.value = this.frame;
             this.accumMaterial.uniforms.iFrame.value = this.frame;
@@ -405,7 +455,7 @@ class WebGLTracer2 {
             this.renderer.render(this.scene, camera, this.renderTarget);
             this.accumMaterial.uniforms.accumTex.value = this.accumRenderTargetA.texture;
             this.renderer.render(this.accumMesh, camera, this.accumRenderTargetB);
-            this.frame += this.rayBudget;
+            this.frame++;
 
             if (window.blurMove.checked && this.frame < 30 && dprValue === 1 && !this.controls.debug) {
                 this.blurMaterial.uniforms.sigma.value = 15.0 * Math.pow(1.0-(0.5-0.5*Math.cos(Math.PI * this.frame / 30)), 4.0);
@@ -552,7 +602,7 @@ function LoadOBJ(path) {
         this.setAttribute('value', this.value);
     };
         
-    window.showFocalPlane.onchange = window.stripes.onchange = window.blurMove.onchange = function() {
+    window.showFocalPlane.onchange = window.showBoost.onchange = window.stripes.onchange = window.blurMove.onchange = function() {
         tracer.controls.changed = true;
     };
 

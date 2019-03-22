@@ -9,6 +9,30 @@ uniform vec2 iResolution;
 uniform float iTime;
 uniform float iFrame;
 
+// Phi (1 + sqrt 5) / 2
+#define IR_1 1.618033988749895
+// 1 + sqrt 2
+#define IR_2 2.414213562373095
+// (9 + sqrt 221) / 10
+#define IR_3 2.386606874731851
+
+#define PHI 1.618033988749895
+#define RPHI 0.618033988749895
+
+#define PI 3.141592653589793
+#define E 2.718281828459045
+
+#define SQRT1_2 0.7071067811865476
+#define SQRT2 1.4142135623730951
+#define SQRT3 1.7320508075688772
+#define SQRT5 2.23606797749979
+
+#define LN2 0.6931471805599453
+#define LN10 2.302585092994046
+#define LOG2E 1.4426950408889634
+#define LOG10E 0.4342944819032518
+
+
 // Structs
 
 struct Hit {
