@@ -169,9 +169,9 @@ class WebGLTracer2 {
                 float fullBoostSamples = rayBudget * 5.0;
                 float boostFactor = clamp(1.0 - iFrame / 10.0, 0.0, 1.0) * (1.0 - clamp((distanceToCenter - fullBoostRadius) / boostRadius, 0.0, 1.0));
                 if (iFrame == 1.0) {
-                    boostFactor = clamp(totalVariance, 0.0, 0.2);
+                    boostFactor = clamp(errorLum, 0.0, 1.0);
                 } else {
-                    boostFactor += clamp(totalVariance, 0.0, min(1.0, iFrame / 10.0));
+                    boostFactor += clamp(errorLum, 0.0, min(1.0, iFrame / 1.0));
                 }
                 boostFactor = clamp(boostFactor, 0.0, 1.0);
                 float boost = pow(boostFactor, boostExponent) * fullBoostSamples;
