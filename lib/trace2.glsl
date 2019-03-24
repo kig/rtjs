@@ -4,7 +4,6 @@
 uniform float deviceEpsilonTrace;
 
 uniform float cameraFocusDistance;
-uniform float focusDistance;
 uniform float cameraApertureSize;
 
 uniform float roughness;
@@ -26,7 +25,8 @@ Ray setupRay(vec2 fragCoord, float off) {
 
 	vec3 target = origin + (direction * cameraFocusDistance);
 
-	origin += applyMatrix4(diskPoint(fragCoord+off) * cameraApertureSize, cameraMatrixWorld);
+	vec3 lensOffset = applyMatrix4Rot(diskPoint(fragCoord+off) * cameraApertureSize, cameraMatrixWorld);
+	origin += lensOffset;
 	direction = normalize(target - origin);
 
 	return Ray(

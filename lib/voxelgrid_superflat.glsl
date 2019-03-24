@@ -1,7 +1,7 @@
 
 // Two-level binary voxel grid to accelerate triangle search
 
-uniform highp isampler2D voxelIndex;
+uniform mediump isampler2D voxelIndex;
 uniform mediump usampler2D triIndices;
 uniform sampler2D triangles;
 uniform sampler2D normals;
@@ -36,7 +36,7 @@ void getSubNode(
     inout int voxelIndexOffset, inout int voxelsOffset, 
     inout vec3 origin, inout float scale
 ) {
-    voxelIndexOffset = voxelIndexOffset + (((1+ci) * size*size*size) >> 5);
+    voxelIndexOffset = voxelIndexOffset + (((1+ci) * size*size*size) >> 4);
     voxelsOffset = voxelsOffset + (ci * size*size*size) * 16;
 
     origin = origin + (vec3(c) * scale);
@@ -109,7 +109,7 @@ void intersectGrid(inout Ray ray, inout Hit closestHit) {
             if (costVis) {
                 ray.light.b += 0.01;
             }
-            int vi = readInt(voxelIndex, voxelIndexWidth, voxelIndexOffset + (ci >> 5)) >> (ci & 31) & 1;
+            int vi = (readInt(voxelIndex, voxelIndexWidth, voxelIndexOffset + (ci >> 4)) >> (ci & 15)) & 1;
             if (vi != 0) {
                 // When at top-level node, jump to second-level node and continue intersect
                 // (push current node on stack, replace with sub-node stuff)

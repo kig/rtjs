@@ -30,10 +30,18 @@ class WebGLTracer2 {
         };
         this.stats.element.className = 'stats';
 
-        document.body.appendChild(this.stats.element);
+        document.body.querySelector('#controls').appendChild(this.stats.element);
+
+        const toBytes = (arr) => {
+            const u8 = new Uint8Array(arr.length * 32);
+            for (let i=0; i<u8.length; i++) {
+                u8[i] = (arr[i >> 5] >> (i & 31)) & 1;
+            }
+            return u8;
+        };
 
         this.textures = {
-            voxelIndex: this.createTexture(arrays.voxelIndex, THREE.RedIntegerFormat, THREE.IntType),
+            voxelIndex: this.createTexture(new Int16Array(arrays.voxelIndex.buffer), THREE.RedIntegerFormat, THREE.ShortType),
             triIndices: this.createTexture(arrays.triIndices, THREE.RedIntegerFormat, THREE.UnsignedShortType),
             triangles: this.createTexture(arrays.triangles, THREE.RedFormat, THREE.FloatType),
             normals: this.createTexture(arrays.normals, THREE.RedFormat, THREE.FloatType)
@@ -56,11 +64,16 @@ class WebGLTracer2 {
             format: THREE.RGBAFormat,
             type: THREE.FloatType
         });
+        this.varianceRenderTarget = new THREE.WebGLRenderTarget(window.innerWidth*dpr, window.innerHeight*dpr, {
+            format: THREE.RGBAFormat,
+            type: THREE.FloatType
+        });
 
         var camera = new THREE.PerspectiveCamera(55, 1, 0.1, 100);
+        camera.setFocalLength(50);
         camera.target = new THREE.Vector3(0, 1.1, 0);
-        camera.focusPoint = new THREE.Vector3(-0.9, 1.3, 0.3);
-        camera.focusDistance = camera.focusPoint.distanceTo(camera.position);
+        this.focusPoint = new THREE.Vector3(-0.9, 1.3, 0.3);
+        this.focusDistance = this.focusPoint.distanceTo(camera.position);
 		camera.apertureSize = Math.pow(1.33, -11);
         camera.previousMatrix = new THREE.Matrix4();
         camera.inverseMatrix = new THREE.Matrix4()
@@ -82,6 +95,8 @@ class WebGLTracer2 {
                 voxelIndexWidth: { value: this.textures.voxelIndex.image.width },
                 triIndices: { value: this.textures.triIndices },
                 triIndicesWidth: { value: this.textures.triIndices.image.width },
+
+                varianceTexture: { value: this.varianceRenderTarget.texture },
                 
                 vgOrigin: { value: new THREE.Vector3().copy(vg._origin) },
                 vgScale: { value: vg._scale },
@@ -90,8 +105,7 @@ class WebGLTracer2 {
                 blueNoise: { value: blueNoiseTexture },
 
                 iResolution: { value: [canvas.width, canvas.height] },
-                cameraFocusDistance: { value: camera.focusDistance },
-                focusDistance: { value: 1.0 },
+                cameraFocusDistance: { value: this.focusDistance },
                 cameraApertureSize: { value: camera.apertureSize },
                 cameraInverseMatrix: { value: camera.inverseMatrix },
                 cameraMatrixWorld: { value: camera.matrixWorld },
@@ -121,6 +135,7 @@ class WebGLTracer2 {
             precision highp int;
            
             uniform vec3 cameraPosition;
+            uniform sampler2D varianceTexture;
             
             ${traceGLSL}
 
@@ -131,16 +146,34 @@ class WebGLTracer2 {
             out vec4 FragColor;    
 
             void main() {
+
+                vec4 varianceMetrics = texelFetch(varianceTexture, ivec2(gl_FragCoord.xy), 0);
+                float errorLum = varianceMetrics.x;
+                float totalVariance = varianceMetrics.y;
+                bool converged = varianceMetrics.z > 0.0;
+                bool convergedNeighbourhood = varianceMetrics.w > 0.0;
+
+                if (iFrame > 0.0 && (converged || convergedNeighbourhood || errorLum < 0.003 || totalVariance < 0.01)) {
+                    FragColor = vec4(0.0, 0.0, 0.0, 0.0);
+                    return;
+                }
+
                 vec4 sum = vec4(0.0);
                 vec2 centerToPixel = vec2(iResolution.x / iResolution.y, 1.0) * (gl_FragCoord.xy / iResolution.xy - 0.5);
                 vec2 centerToPixel8x8 = vec2(iResolution.x / iResolution.y, 1.0) * (8.0*floor(gl_FragCoord.xy / 8.0) / iResolution.xy - 0.5);
                 float distanceToCenterPx = length(centerToPixel);
                 float distanceToCenter = length(centerToPixel8x8);
-                float boostRadius = max(0.2, rayBudget * 0.4);
-                float fullBoostRadius = max(0.05, rayBudget * 0.1);
-                float boostExponent = 8.0 / max(0.5, rayBudget);
-                float fullBoostSamples = max(0.5, rayBudget) * 30.0;
-                float boostFactor = 1.0 - clamp((distanceToCenter - fullBoostRadius) / boostRadius, 0.0, 1.0);
+                float boostRadius = rayBudget * 0.4;
+                float fullBoostRadius = rayBudget * 0.1;
+                float boostExponent = 8.0 / rayBudget;
+                float fullBoostSamples = rayBudget * 5.0;
+                float boostFactor = clamp(1.0 - iFrame / 10.0, 0.0, 1.0) * (1.0 - clamp((distanceToCenter - fullBoostRadius) / boostRadius, 0.0, 1.0));
+                if (iFrame == 1.0) {
+                    boostFactor = clamp(totalVariance, 0.0, 0.2);
+                } else {
+                    boostFactor += clamp(totalVariance, 0.0, min(1.0, iFrame / 10.0));
+                }
+                boostFactor = clamp(boostFactor, 0.0, 1.0);
                 float boost = pow(boostFactor, boostExponent) * fullBoostSamples;
                 float sampleCountJitter = 0.0; //fract(random(vec2(((1.0+sqrt(2.0)))+iTime, (9.0+sqrt(221.0))*0.1+iTime)));
 
@@ -188,6 +221,76 @@ class WebGLTracer2 {
         this.mesh.frustumCulled = false;
         this.mesh.position.z = -0.5;
         this.mesh.rotation.y = Math.PI;
+
+        this.varianceMaterial = new THREE.RawShaderMaterial({
+            uniforms: {
+                tex: { value: this.accumRenderTargetB.texture },
+                previousTex: { value: this.renderTarget.texture },
+                iFrame: { value: this.frame }
+            },
+            vertexShader: this.material.vertexShader,
+            fragmentShader: `#version 300 es
+
+            precision highp float;
+            precision highp int;
+            
+            uniform sampler2D tex;
+            uniform sampler2D previousTex;
+
+            uniform float iFrame;
+
+            out vec4 FragColor;    
+
+            float rgbToPerceivedLuminance(vec3 c) {
+                return c.r * 0.2126 + c.g * 0.7152 + c.b * 0.0722;
+            }
+
+            void main() {
+
+                if (iFrame == 0.0) {
+                    FragColor = vec4(1.0, 1.0, 0.0, 0.0);
+                    return;
+                }
+
+                vec4 prev = texelFetch(previousTex, ivec2(gl_FragCoord.xy), 0);
+                vec4 current = texelFetch(tex, ivec2(gl_FragCoord.xy), 0);
+                vec3 error = (current.rgb / current.a) - (prev.rgb / prev.a);
+                float errorLum = rgbToPerceivedLuminance(abs(error));
+
+                vec4 pixels[49];
+                bool converged = true;
+                vec4 sum = vec4(0.0);
+                for (int y = -3, i = 0; y <= 3; y++)
+                for (int x = -3; x <= 3; x++, i++) {
+                    vec4 px = texelFetch(tex, ivec2(gl_FragCoord.xy) + ivec2(x, y), 0);
+                    pixels[i] = px;
+                    converged = converged && (px.a >= 500.0);
+                    sum += px;
+                }
+                bool convergedVariance = true;
+                vec3 avg = sum.rgb / sum.a;
+                float totalVariance = 0.0;
+                for (int i = 0; i < 49; i++) {
+                    vec4 px = pixels[i];
+                    vec3 d = (px.rgb / px.a) - avg;
+                    float variance = dot(d, d);
+                    convergedVariance = convergedVariance && (variance < 3.0*(3.0 / 256.0)*(3.0 / 256.0));
+                    totalVariance += variance;
+                }
+
+                FragColor = vec4(current.a < 30.0 ? 1.0 : errorLum, totalVariance, float(converged), float(convergedVariance));
+            }
+            `,
+            depthTest: false,
+            depthWrite: false
+        });
+        this.varianceMesh = new THREE.Mesh(
+            new THREE.PlaneGeometry(2,2,1),
+            this.varianceMaterial
+        );
+        this.varianceMesh.frustumCulled = false;
+        this.varianceMesh.position.z = -0.5;
+        this.varianceMesh.rotation.y = Math.PI;
 
         this.accumMaterial = new THREE.RawShaderMaterial({
             uniforms: {
@@ -277,7 +380,9 @@ class WebGLTracer2 {
 
         this.blitMaterial = new THREE.RawShaderMaterial({
             uniforms: {
-                tex: { value: this.renderTarget.texture }
+                tex: { value: this.renderTarget.texture },
+                varianceTexture: { value: this.varianceRenderTarget.texture },
+                showConverged: { value: false }
             },
             vertexShader: this.material.vertexShader,
             fragmentShader: `#version 300 es
@@ -286,12 +391,30 @@ class WebGLTracer2 {
             precision highp int;
             
             uniform sampler2D tex;
+            uniform sampler2D varianceTexture;
 
-            out vec4 FragColor;    
+            uniform bool showConverged;
+
+            out vec4 FragColor;
 
             void main() {
                 vec4 src = texelFetch(tex, ivec2(gl_FragCoord.xy), 0);
                 FragColor = vec4(1.0 - exp(-0.5 * src.rgb / src.a), 1.0);
+                vec4 varianceMetrics = texelFetch(varianceTexture, ivec2(gl_FragCoord.xy), 0);
+                float errorLum = varianceMetrics.x;
+                float totalVariance = varianceMetrics.y;
+                bool converged = varianceMetrics.z > 0.0;
+                bool convergedNeighbourhood = varianceMetrics.w > 0.0;
+
+                if (showConverged) {
+                    if ((converged || convergedNeighbourhood || errorLum < 0.003 || totalVariance < 0.01)) {
+                        FragColor.r -= 0.5;
+                        FragColor.b += 0.5;
+                    } else {
+                        FragColor.r += 0.5;
+                        FragColor.b -= 0.5;
+                    }
+                }
             }
             `,
             depthTest: false,
@@ -352,23 +475,23 @@ class WebGLTracer2 {
             .sub( this.camera.position )
             .normalize();
         
-        const ray = new Ray(this.camera.position, direction, 0);
+        const ray = new Ray(this.camera.position.clone(), direction, 0);
         return ray;
     }
 
     render() {
-        if (this.controls.changed || this.frame < 1) {
+        if (this.controls.changed || this.frame < 500) {
 
             if (this.controls.focusPoint) {
                 const ray = this.setupRay(this.controls.focusPoint);
                 this.controls.focusPoint = null;
                 const hit = this.voxelGrid.intersect(ray);
                 if (hit && hit.obj) {
-                    this.camera.focusPoint.copy(add(ray.o, mulS(ray.d, hit.distance)));
+                    this.focusPoint.copy(add(ray.o, mulS(ray.d, hit.distance)));
                 }
             }
 
-            this.camera.focusDistance = this.camera.position.distanceTo(this.camera.focusPoint);
+            this.focusDistance = this.camera.position.distanceTo(this.focusPoint);
 
             this.frameTime = Date.now() - this.frameStartTime;
             this.frameStartTime = Date.now();
@@ -389,13 +512,14 @@ class WebGLTracer2 {
             const controlsActive = (cameraMatrixChanged || this.controls.down || this.controls.pinching);
 
             if (this.controls.changed) {
+                this.rayBudget = 0.1;
                 this.frame = 0;
             }
 
             if (this.frameTime < 20) {
                 this.rayBudget *= 1.1;
             } else if (this.frameTime > 40) {
-                this.rayBudget = Math.max(0.05, this.rayBudget*0.8);
+                this.rayBudget = Math.max(0.01, this.rayBudget*0.8);
             }
             this.stats.log('Frame time', Math.round(this.frameTime*100)/100 + ' ms');
             this.stats.log('Ray budget', Math.round(this.rayBudget*100)/100);
@@ -405,9 +529,12 @@ class WebGLTracer2 {
             this.material.uniforms.costVis.value = this.controls.debug;
             this.material.uniforms.aaSize.value = 2;
 
+            this.blitMaterial.uniforms.showConverged.value = !!window.showConverged.checked;
+
             var dprValue = dpr;
 
             if (controlsActive) {
+                this.rayBudget = 0.1;
                 if (this.renderer.domElement.width !== window.innerWidth ||
                     this.renderer.domElement.height !== window.innerHeight
                 ) {
@@ -417,6 +544,7 @@ class WebGLTracer2 {
                     this.renderTarget.setSize(window.innerWidth, window.innerHeight);
                     this.accumRenderTargetA.setSize(window.innerWidth, window.innerHeight);
                     this.accumRenderTargetB.setSize(window.innerWidth, window.innerHeight);
+                    this.varianceRenderTarget.setSize(window.innerWidth, window.innerHeight);
                 }
                 dprValue = 1;
             } else {
@@ -429,6 +557,7 @@ class WebGLTracer2 {
                     this.renderTarget.setSize(window.innerWidth*dpr, window.innerHeight*dpr);
                     this.accumRenderTargetA.setSize(window.innerWidth*dpr, window.innerHeight*dpr);
                     this.accumRenderTargetB.setSize(window.innerWidth*dpr, window.innerHeight*dpr);
+                    this.varianceRenderTarget.setSize(window.innerWidth*dpr, window.innerHeight*dpr);
                 }
             }
 
@@ -442,10 +571,11 @@ class WebGLTracer2 {
             this.material.uniforms.iResolution.value[1] = this.renderer.domElement.height;
             this.material.uniforms.roughness.value = window.roughness.value / 100;
             this.material.uniforms.rayBudget.value = this.rayBudget;
-            this.material.uniforms.cameraFocusDistance.value = this.camera.focusDistance;
+            this.material.uniforms.cameraFocusDistance.value = this.focusDistance;
 
             this.material.uniforms.iFrame.value = this.frame;
             this.accumMaterial.uniforms.iFrame.value = this.frame;
+            this.varianceMaterial.uniforms.iFrame.value = this.frame;
 
             // Swap render targets for accumulator
             const tmp = this.accumRenderTargetA;
@@ -456,6 +586,32 @@ class WebGLTracer2 {
             this.accumMaterial.uniforms.accumTex.value = this.accumRenderTargetA.texture;
             this.renderer.render(this.accumMesh, camera, this.accumRenderTargetB);
             this.frame++;
+
+            this.varianceMaterial.uniforms.previousTex.value = this.accumRenderTargetA.texture;
+            this.varianceMaterial.uniforms.tex.value = this.accumRenderTargetB.texture;
+            this.renderer.render(this.varianceMesh, camera, this.varianceRenderTarget);
+
+            if (this.frame === 1) {
+                this.material.uniforms.rayBudget.value = this.rayBudget / 4;
+
+                this.material.uniforms.iFrame.value = this.frame;
+                this.accumMaterial.uniforms.iFrame.value = this.frame;
+                this.varianceMaterial.uniforms.iFrame.value = this.frame;
+
+                // Swap render targets for accumulator
+                const tmp = this.accumRenderTargetA;
+                this.accumRenderTargetA = this.accumRenderTargetB;
+                this.accumRenderTargetB = tmp;
+
+                this.renderer.render(this.scene, camera, this.renderTarget);
+                this.accumMaterial.uniforms.accumTex.value = this.accumRenderTargetA.texture;
+                this.renderer.render(this.accumMesh, camera, this.accumRenderTargetB);
+                this.frame++;
+
+                this.varianceMaterial.uniforms.previousTex.value = this.accumRenderTargetA.texture;
+                this.varianceMaterial.uniforms.tex.value = this.accumRenderTargetB.texture;
+                this.renderer.render(this.varianceMesh, camera, this.varianceRenderTarget);
+            }
 
             if (window.blurMove.checked && this.frame < 30 && dprValue === 1 && !this.controls.debug) {
                 this.blurMaterial.uniforms.sigma.value = 15.0 * Math.pow(1.0-(0.5-0.5*Math.cos(Math.PI * this.frame / 30)), 4.0);
