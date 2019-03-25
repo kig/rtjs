@@ -151,9 +151,9 @@ class WebGLTracer2 {
                 float errorLum = varianceMetrics.x;
                 float totalVariance = varianceMetrics.y;
                 bool converged = varianceMetrics.z > 0.0;
-                bool convergedNeighbourhood = varianceMetrics.w > 0.0;
+                bool convergedVariance = varianceMetrics.w > 0.0;
 
-                if (iFrame > 0.0 && (converged || convergedNeighbourhood || errorLum < 0.003 || totalVariance < 0.01)) {
+                if (iFrame > 0.0 && (converged || convergedVariance || errorLum < 0.0001)) {
                     FragColor = vec4(0.0, 0.0, 0.0, 0.0);
                     return;
                 }
@@ -166,12 +166,12 @@ class WebGLTracer2 {
                 float boostRadius = rayBudget * 0.4;
                 float fullBoostRadius = rayBudget * 0.1;
                 float boostExponent = 8.0 / rayBudget;
-                float fullBoostSamples = rayBudget * 5.0;
+                float fullBoostSamples = rayBudget;
                 float boostFactor = clamp(1.0 - iFrame / 10.0, 0.0, 1.0) * (1.0 - clamp((distanceToCenter - fullBoostRadius) / boostRadius, 0.0, 1.0));
                 if (iFrame == 1.0) {
-                    boostFactor = clamp(errorLum, 0.0, 1.0);
+                    boostFactor = clamp(totalVariance/16.0, 0.0, 1.0);
                 } else {
-                    boostFactor += clamp(errorLum, 0.0, min(1.0, iFrame / 1.0));
+                    boostFactor += clamp(totalVariance/16.0, 0.0, min(1.0, iFrame / 1.0));
                 }
                 boostFactor = clamp(boostFactor, 0.0, 1.0);
                 float boost = pow(boostFactor, boostExponent) * fullBoostSamples;
@@ -245,6 +245,10 @@ class WebGLTracer2 {
                 return c.r * 0.2126 + c.g * 0.7152 + c.b * 0.0722;
             }
 
+            vec3 bilinear(vec3 tl, vec3 tr, vec3 bl, vec3 br, vec2 uv) {
+                return mix(mix(tl, tr, uv.x), mix(bl, br, uv.x), uv.y);
+            }
+
             void main() {
 
                 if (iFrame == 0.0) {
@@ -254,31 +258,38 @@ class WebGLTracer2 {
 
                 vec4 prev = texelFetch(previousTex, ivec2(gl_FragCoord.xy), 0);
                 vec4 current = texelFetch(tex, ivec2(gl_FragCoord.xy), 0);
-                vec3 error = (current.rgb / current.a) - (prev.rgb / prev.a);
+                vec3 error = (1.0 - exp(-0.5 * current.rgb / current.a)) - (1.0 - exp(-0.5 * prev.rgb / prev.a));
                 float errorLum = rgbToPerceivedLuminance(abs(error));
 
-                vec4 pixels[49];
+                vec4 pixels[16];
                 bool converged = true;
                 vec4 sum = vec4(0.0);
-                for (int y = -3, i = 0; y <= 3; y++)
-                for (int x = -3; x <= 3; x++, i++) {
-                    vec4 px = texelFetch(tex, ivec2(gl_FragCoord.xy) + ivec2(x, y), 0);
-                    pixels[i] = px;
+                for (int y = 0, i = 0; y < 4; y++)
+                for (int x = 0; x < 4; x++, i++) {
+                    vec4 px = texelFetch(tex, ivec2(4.0 * floor(gl_FragCoord.xy/4.0)) + ivec2(x, y), 0);
+                    pixels[i] = vec4(1.0 - exp(-0.5 * px.rgb / px.a), px.a);
                     converged = converged && (px.a >= 500.0);
                     sum += px;
                 }
                 bool convergedVariance = true;
                 vec3 avg = sum.rgb / sum.a;
                 float totalVariance = 0.0;
-                for (int i = 0; i < 49; i++) {
+                vec3 tl = pixels[0].rgb;
+                vec3 tr = pixels[3].rgb;
+                vec3 bl = pixels[12].rgb;
+                vec3 br = pixels[15].rgb;
+                for (int y = 0, i = 0; y < 4; y++)
+                for (int x = 0; x < 4; x++, i++) {
                     vec4 px = pixels[i];
-                    vec3 d = (px.rgb / px.a) - avg;
-                    float variance = dot(d, d);
-                    convergedVariance = convergedVariance && (variance < 3.0*(3.0 / 256.0)*(3.0 / 256.0));
+                    vec3 v = px.rgb;
+                    vec3 g = bilinear(tl, tr, bl, br, vec2(float(x)/3.0, float(y)/3.0));
+                    vec3 d = v - g;
+                    float variance = rgbToPerceivedLuminance(abs(d));
+                    convergedVariance = convergedVariance && (variance < (3.0 / 256.0));
                     totalVariance += variance;
                 }
 
-                FragColor = vec4(current.a < 30.0 ? 1.0 : errorLum, totalVariance, float(converged), float(convergedVariance));
+                FragColor = vec4((current.a < 30.0 ? 1.0 : errorLum) * float(current.a < 500.0), totalVariance, float(converged), float(convergedVariance));
             }
             `,
             depthTest: false,
@@ -382,7 +393,8 @@ class WebGLTracer2 {
             uniforms: {
                 tex: { value: this.renderTarget.texture },
                 varianceTexture: { value: this.varianceRenderTarget.texture },
-                showConverged: { value: false }
+                showConverged: { value: false },
+                showSampleCount: { value: false }
             },
             vertexShader: this.material.vertexShader,
             fragmentShader: `#version 300 es
@@ -394,6 +406,7 @@ class WebGLTracer2 {
             uniform sampler2D varianceTexture;
 
             uniform bool showConverged;
+            uniform bool showSampleCount;
 
             out vec4 FragColor;
 
@@ -404,16 +417,19 @@ class WebGLTracer2 {
                 float errorLum = varianceMetrics.x;
                 float totalVariance = varianceMetrics.y;
                 bool converged = varianceMetrics.z > 0.0;
-                bool convergedNeighbourhood = varianceMetrics.w > 0.0;
+                bool convergedVariance = varianceMetrics.w > 0.0;
 
                 if (showConverged) {
-                    if ((converged || convergedNeighbourhood || errorLum < 0.003 || totalVariance < 0.01)) {
+                    if ((converged || convergedVariance || errorLum < 0.0001 || totalVariance < 0.01 )) {
                         FragColor.r -= 0.5;
                         FragColor.b += 0.5;
                     } else {
                         FragColor.r += 0.5;
                         FragColor.b -= 0.5;
                     }
+                }
+                if (showSampleCount) {
+                    FragColor = vec4(src.aaa / 500.0, 1.0);
                 }
             }
             `,
@@ -480,7 +496,7 @@ class WebGLTracer2 {
     }
 
     render() {
-        if (this.controls.changed || this.frame < 500) {
+        if (true) {
 
             if (this.controls.focusPoint) {
                 const ray = this.setupRay(this.controls.focusPoint);
@@ -509,10 +525,10 @@ class WebGLTracer2 {
 
             const cameraMatrixChanged = !camera.inverseMatrix.equals(camera.previousMatrix);
 
-            const controlsActive = (cameraMatrixChanged || this.controls.down || this.controls.pinching);
+            const controlsActive = (cameraMatrixChanged || apertureChanged || this.controls.down || this.controls.pinching);
 
-            if (this.controls.changed) {
-                this.rayBudget = 0.1;
+            if (controlsActive || this.controls.changed) {
+                this.rayBudget = 0.01;
                 this.frame = 0;
             }
 
@@ -530,11 +546,12 @@ class WebGLTracer2 {
             this.material.uniforms.aaSize.value = 2;
 
             this.blitMaterial.uniforms.showConverged.value = !!window.showConverged.checked;
+            this.blitMaterial.uniforms.showSampleCount.value = !!window.showSampleCount.checked;
 
             var dprValue = dpr;
 
             if (controlsActive) {
-                this.rayBudget = 0.1;
+                this.rayBudget = 0.01;
                 if (this.renderer.domElement.width !== window.innerWidth ||
                     this.renderer.domElement.height !== window.innerHeight
                 ) {
@@ -758,7 +775,10 @@ function LoadOBJ(path) {
         this.setAttribute('value', this.value);
     };
         
-    window.showFocalPlane.onchange = window.showBoost.onchange = window.stripes.onchange = window.blurMove.onchange = function() {
+    window.showFocalPlane.onchange = 
+    window.showBoost.onchange = 
+    window.stripes.onchange = 
+    window.blurMove.onchange = function() {
         tracer.controls.changed = true;
     };
 

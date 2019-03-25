@@ -44,7 +44,7 @@ vec3 getColor(in Ray r, in int index) {
 	if (index < 0) {
 		return vec3(0.01);
 	} else {
-		return mix(vec3(0.95, 0.66, 0.15), vec3(0.05), float(stripes) * pow(fract(roughness*dot(r.o, r.o)*10.0), 0.125));
+		return mix(vec3(0.95, 0.66, 0.15), vec3(0.05, 0.07, 0.12), float(stripes) * pow(fract(roughness*dot(r.o, r.o)*10.0), 0.125));
 	}
 }
 
