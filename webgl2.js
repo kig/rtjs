@@ -421,17 +421,43 @@ class WebGLTracer2 {
                 bool converged = varianceMetrics.z > 0.0;
                 bool convergedVariance = varianceMetrics.w > 0.0;
 
-                if (errorLum > 0.1) {
-                    vec4 c0 = texelFetch(tex, ivec2(gl_FragCoord.xy) + ivec2(-1, 0), 0);
-                    vec4 c1 = texelFetch(tex, ivec2(gl_FragCoord.xy) + ivec2(1, 0), 0);
-                    vec4 c2 = texelFetch(tex, ivec2(gl_FragCoord.xy) + ivec2(0, 1), 0);
-                    vec4 c3 = texelFetch(tex, ivec2(gl_FragCoord.xy) + ivec2(0, -1), 0);
-                    vec4 c4 = texelFetch(tex, ivec2(gl_FragCoord.xy) + ivec2(-1, -1), 0);
-                    vec4 c5 = texelFetch(tex, ivec2(gl_FragCoord.xy) + ivec2(1, 1), 0);
-                    vec4 c6 = texelFetch(tex, ivec2(gl_FragCoord.xy) + ivec2(1, -1), 0);
-                    vec4 c7 = texelFetch(tex, ivec2(gl_FragCoord.xy) + ivec2(-1, 1), 0);
-                    vec4 avg = (c0 + c1 + c2 + c3 + c4 + c5 + c6 + c7 + src) / 9.0;
-                    FragColor.rgb = toGamma(avg);
+                if (errorLum > 0.01 || length(FragColor.rgb) < 0.4) {
+                    vec3 v[9];
+                    v[0] = toGamma(texelFetch(tex, ivec2(gl_FragCoord.xy) + ivec2(0, -1), 0));
+                    v[1] = toGamma(texelFetch(tex, ivec2(gl_FragCoord.xy) + ivec2(0, -1), 0));
+                    v[2] = toGamma(texelFetch(tex, ivec2(gl_FragCoord.xy) + ivec2(1, 0), 0));
+                    v[3] = toGamma(texelFetch(tex, ivec2(gl_FragCoord.xy) + ivec2(-1, 0), 0));
+                    v[4] = FragColor.rgb;
+                    v[5] = toGamma(texelFetch(tex, ivec2(gl_FragCoord.xy) + ivec2(1, 0), 0));
+                    v[6] = toGamma(texelFetch(tex, ivec2(gl_FragCoord.xy) + ivec2(0, 1), 0));
+                    v[7] = toGamma(texelFetch(tex, ivec2(gl_FragCoord.xy) + ivec2(0, 1), 0));
+                    v[8] = toGamma(texelFetch(tex, ivec2(gl_FragCoord.xy) + ivec2(1, 0), 0));
+
+                    if (length(v[4]) > 0.2 && (length(v[4]) > 1.2 || length(v[4] - v[5]) > 0.1 || length(v[4] - v[3]) > 0.1 || length(v[4] - v[1]) > 0.1 || length(v[4] - v[7]) > 0.1)) { 
+                        #define s2(a, b)				temp = a; a = min(a, b); b = max(temp, b);
+                        #define mn3(a, b, c)			s2(a, b); s2(a, c);
+                        #define mx3(a, b, c)			s2(b, c); s2(a, c);
+
+                        #define mnmx3(a, b, c)			mx3(a, b, c); s2(a, b);                                   // 3 exchanges
+                        #define mnmx4(a, b, c, d)		s2(a, b); s2(c, d); s2(a, c); s2(b, d);                   // 4 exchanges
+                        #define mnmx5(a, b, c, d, e)	s2(a, b); s2(c, d); mn3(a, c, e); mx3(b, d, e);           // 6 exchanges
+                        #define mnmx6(a, b, c, d, e, f) s2(a, d); s2(b, e); s2(c, f); mn3(a, b, c); mx3(d, e, f); // 7 exchanges
+
+                        vec3 temp;
+                        mnmx6(v[0], v[1], v[2], v[3], v[4], v[5]);
+                        mnmx5(v[1], v[2], v[3], v[4], v[6]);
+                        mnmx4(v[2], v[3], v[4], v[7]);
+                        mnmx3(v[3], v[4], v[8]);
+                        FragColor.rgb = v[4];
+                    } else {
+                        FragColor.rgb = toGamma(
+                            src +
+                            texelFetch(tex, ivec2(gl_FragCoord.xy) + ivec2(0, -1), 0) + 
+                            texelFetch(tex, ivec2(gl_FragCoord.xy) + ivec2(0, 1), 0) + 
+                            texelFetch(tex, ivec2(gl_FragCoord.xy) + ivec2(1, 0), 0) + 
+                            texelFetch(tex, ivec2(gl_FragCoord.xy) + ivec2(-1, 0), 0)
+                        );
+                    }
                 }
 
                 if (showConverged) {
