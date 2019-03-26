@@ -147,50 +147,53 @@ class WebGLTracer2 {
 
             void main() {
 
-                vec4 varianceMetrics = texelFetch(varianceTexture, ivec2(gl_FragCoord.xy), 0);
-                float errorLum = varianceMetrics.x;
-                float totalVariance = varianceMetrics.y;
-                bool converged = varianceMetrics.z > 0.0;
-                bool convergedVariance = varianceMetrics.w > 0.0;
-
-                if (iFrame > 0.0 && (converged || convergedVariance || errorLum < 0.0001)) {
-                    FragColor = vec4(0.0, 0.0, 0.0, 0.0);
-                    return;
-                }
-
+                float samples = 1.0;
                 vec4 sum = vec4(0.0);
-                vec2 centerToPixel = vec2(iResolution.x / iResolution.y, 1.0) * (gl_FragCoord.xy / iResolution.xy - 0.5);
-                vec2 centerToPixel8x8 = vec2(iResolution.x / iResolution.y, 1.0) * (8.0*floor(gl_FragCoord.xy / 8.0) / iResolution.xy - 0.5);
-                float distanceToCenterPx = length(centerToPixel);
-                float distanceToCenter = length(centerToPixel8x8);
-                float boostRadius = rayBudget * 0.4;
-                float fullBoostRadius = rayBudget * 0.1;
-                float boostExponent = 8.0 / rayBudget;
-                float fullBoostSamples = rayBudget;
-                float boostFactor = clamp(1.0 - iFrame / 10.0, 0.0, 1.0) * (1.0 - clamp((distanceToCenter - fullBoostRadius) / boostRadius, 0.0, 1.0));
-                if (iFrame == 1.0) {
-                    boostFactor = clamp(totalVariance/16.0, 0.0, 1.0);
-                } else {
-                    boostFactor += clamp(totalVariance/16.0, 0.0, min(1.0, iFrame / 1.0));
-                }
-                boostFactor = clamp(boostFactor, 0.0, 1.0);
-                float boost = pow(boostFactor, boostExponent) * fullBoostSamples;
-                float sampleCountJitter = 0.0; //fract(random(vec2(((1.0+sqrt(2.0)))+iTime, (9.0+sqrt(221.0))*0.1+iTime)));
 
-                float samples = 1.0 + boost + sampleCountJitter;
+                if (iFrame > 1.0) {
 
-                // samples = max(1.0, samples);
-                if (iFrame == 0.0) {
-                    // samples = max(1.0, samples);
+                    vec4 varianceMetrics = texelFetch(varianceTexture, ivec2(gl_FragCoord.xy), 0);
+                    float errorLum = varianceMetrics.x;
+                    float totalVariance = varianceMetrics.y;
+                    bool converged = varianceMetrics.z > 0.0;
+                    bool convergedVariance = varianceMetrics.w > 0.0;
+
+                    if (rayBudget < 4.0 && ((iFrame > 2.0 && iFrame < 10.0) || (iFrame > 100.0 && errorLum < 0.0001)) && (converged || convergedVariance || (iFrame >= 2.0 && (errorLum < 0.01 || totalVariance < 0.01)))) {
+                        FragColor = vec4(0.0, 0.0, 0.0, 0.0);
+                        return;
+                    }
+
+                    vec2 centerToPixel = vec2(iResolution.x / iResolution.y, 1.0) * (gl_FragCoord.xy / iResolution.xy - 0.5);
+                    vec2 centerToPixel8x8 = vec2(iResolution.x / iResolution.y, 1.0) * (8.0*floor(gl_FragCoord.xy / 8.0) / iResolution.xy - 0.5);
+                    float distanceToCenterPx = length(centerToPixel);
+                    float distanceToCenter = length(centerToPixel8x8);
+                    float boostRadius = max(0.2, rayBudget * 0.4);
+                    float fullBoostRadius = max(0.025, rayBudget * 0.1);
+                    float boostExponent = 8.0 / max(0.125, rayBudget);
+                    float fullBoostSamples = rayBudget * 5.0;
+                    float boostFactor = (1.0 - clamp((distanceToCenter - fullBoostRadius) / boostRadius, 0.0, 1.0));
+                    boostFactor += totalVariance/4.0;
+                    boostFactor = clamp(boostFactor, 0.0, 1.0);
+                    float boost = pow(boostFactor, boostExponent) * fullBoostSamples;
+                    float sampleCountJitter = 0.0; //fract(random(vec2(((1.0+sqrt(2.0)))+iTime, (9.0+sqrt(221.0))*0.1+iTime)));
+
+                    samples = boost + sampleCountJitter;
+
+                    if (rayBudget > 4.0 && iFrame > 100.0) {
+                        samples = 1.0 + totalVariance;
+                    }
+                    
+                    if (showBoost) {
+                        sum.g += samples;
+                        if (distanceToCenterPx < fullBoostRadius) {
+                            if (distanceToCenterPx < 0.002 || (fullBoostRadius - distanceToCenterPx) < 0.002) {
+                                sum.r += samples;
+                                sum.gb *= 0.0;
+                            }
+                        }
+                    }
                 }
-                // if (samples < 0.0) {
-                //     vec2 cell = mod(floor(gl_FragCoord.xy / 16.0), vec2(4.0));
-                //     if ((cell.y * 4.0 + cell.x) / 15.0 > abs(fract(samples*100.0))) {
-                //         FragColor = vec4(0.0);
-                //         discard;
-                //         return;
-                //     }
-                // }
+
                 for (float i = 0.0; i < samples; i++) {
                     float y = mod(i, 2.0);
                     float x = i - y * 2.0;
@@ -198,15 +201,6 @@ class WebGLTracer2 {
                     float rx = mod(x + iFrame - aaSize * ry, aaSize);
                     vec3 c = trace(gl_FragCoord.xy + (vec2(rx,ry) + vec2(random(i+0.5*vec2(rx,ry)), random(i+0.5+0.5*vec2(rx,ry)))) / aaSize);
                     sum += vec4(c, 1.0);
-                }
-                if (showBoost) {
-                    sum.g += samples;
-                    if (distanceToCenterPx < fullBoostRadius) {
-                        if (distanceToCenterPx < 0.002 || (fullBoostRadius - distanceToCenterPx) < 0.002) {
-                            sum.r += samples;
-                            sum.gb *= 0.0;
-                        }
-                    }
                 }
                 FragColor = sum;
             }
@@ -242,11 +236,15 @@ class WebGLTracer2 {
             out vec4 FragColor;    
 
             float rgbToPerceivedLuminance(vec3 c) {
-                return c.r * 0.2126 + c.g * 0.7152 + c.b * 0.0722;
+                return clamp(c.r * 0.2126 + c.g * 0.7152 + c.b * 0.0722, 0.0, 1.0);
             }
 
             vec3 bilinear(vec3 tl, vec3 tr, vec3 bl, vec3 br, vec2 uv) {
                 return mix(mix(tl, tr, uv.x), mix(bl, br, uv.x), uv.y);
+            }
+
+            vec3 toGamma(vec4 c) {
+                return clamp((1.0 - exp(-0.5 * c.rgb / c.a)), vec3(0.0), vec3(1.0));
             }
 
             void main() {
@@ -258,7 +256,7 @@ class WebGLTracer2 {
 
                 vec4 prev = texelFetch(previousTex, ivec2(gl_FragCoord.xy), 0);
                 vec4 current = texelFetch(tex, ivec2(gl_FragCoord.xy), 0);
-                vec3 error = (1.0 - exp(-0.5 * current.rgb / current.a)) - (1.0 - exp(-0.5 * prev.rgb / prev.a));
+                vec3 error = toGamma(current) - toGamma(prev);
                 float errorLum = rgbToPerceivedLuminance(abs(error));
 
                 vec4 pixels[16];
@@ -267,7 +265,7 @@ class WebGLTracer2 {
                 for (int y = 0, i = 0; y < 4; y++)
                 for (int x = 0; x < 4; x++, i++) {
                     vec4 px = texelFetch(tex, ivec2(4.0 * floor(gl_FragCoord.xy/4.0)) + ivec2(x, y), 0);
-                    pixels[i] = vec4(1.0 - exp(-0.5 * px.rgb / px.a), px.a);
+                    pixels[i] = vec4(toGamma(px), px.a);
                     converged = converged && (px.a >= 500.0);
                     sum += px;
                 }
@@ -284,12 +282,12 @@ class WebGLTracer2 {
                     vec3 v = px.rgb;
                     vec3 g = bilinear(tl, tr, bl, br, vec2(float(x)/3.0, float(y)/3.0));
                     vec3 d = v - g;
-                    float variance = rgbToPerceivedLuminance(abs(d));
-                    convergedVariance = convergedVariance && (variance < (3.0 / 256.0));
+                    float variance = rgbToPerceivedLuminance(abs(v - g));
+                    convergedVariance = convergedVariance && (px.a >= 16.0 && variance < (0.5 / 256.0));
                     totalVariance += variance;
                 }
 
-                FragColor = vec4((current.a < 30.0 ? 1.0 : errorLum) * float(current.a < 500.0), totalVariance, float(converged), float(convergedVariance));
+                FragColor = vec4(errorLum, totalVariance, float(converged), float(convergedVariance));
             }
             `,
             depthTest: false,
@@ -410,17 +408,34 @@ class WebGLTracer2 {
 
             out vec4 FragColor;
 
+            vec3 toGamma(vec4 c) {
+                return clamp((1.0 - exp(-0.5 * c.rgb / c.a)), vec3(0.0), vec3(1.0));
+            }
+            
             void main() {
                 vec4 src = texelFetch(tex, ivec2(gl_FragCoord.xy), 0);
-                FragColor = vec4(1.0 - exp(-0.5 * src.rgb / src.a), 1.0);
+                FragColor = vec4(toGamma(src), 1.0);
                 vec4 varianceMetrics = texelFetch(varianceTexture, ivec2(gl_FragCoord.xy), 0);
                 float errorLum = varianceMetrics.x;
                 float totalVariance = varianceMetrics.y;
                 bool converged = varianceMetrics.z > 0.0;
                 bool convergedVariance = varianceMetrics.w > 0.0;
 
+                if (errorLum > 0.1) {
+                    vec4 c0 = texelFetch(tex, ivec2(gl_FragCoord.xy) + ivec2(-1, 0), 0);
+                    vec4 c1 = texelFetch(tex, ivec2(gl_FragCoord.xy) + ivec2(1, 0), 0);
+                    vec4 c2 = texelFetch(tex, ivec2(gl_FragCoord.xy) + ivec2(0, 1), 0);
+                    vec4 c3 = texelFetch(tex, ivec2(gl_FragCoord.xy) + ivec2(0, -1), 0);
+                    vec4 c4 = texelFetch(tex, ivec2(gl_FragCoord.xy) + ivec2(-1, -1), 0);
+                    vec4 c5 = texelFetch(tex, ivec2(gl_FragCoord.xy) + ivec2(1, 1), 0);
+                    vec4 c6 = texelFetch(tex, ivec2(gl_FragCoord.xy) + ivec2(1, -1), 0);
+                    vec4 c7 = texelFetch(tex, ivec2(gl_FragCoord.xy) + ivec2(-1, 1), 0);
+                    vec4 avg = (c0 + c1 + c2 + c3 + c4 + c5 + c6 + c7 + src) / 9.0;
+                    FragColor.rgb = toGamma(avg);
+                }
+
                 if (showConverged) {
-                    if ((converged || convergedVariance || errorLum < 0.0001 || totalVariance < 0.01 )) {
+                    if ((converged || convergedVariance || errorLum < 0.01 || totalVariance < 0.01 )) {
                         FragColor.r -= 0.5;
                         FragColor.b += 0.5;
                     } else {
@@ -429,8 +444,9 @@ class WebGLTracer2 {
                     }
                 }
                 if (showSampleCount) {
-                    FragColor = vec4(src.aaa / 500.0, 1.0);
+                    FragColor = vec4(src.aaa / 100.0, 1.0);
                 }
+                // FragColor = vec4(errorLum/2.0, 0.0, src.a/10.0, 1.0);
             }
             `,
             depthTest: false,
@@ -527,13 +543,13 @@ class WebGLTracer2 {
 
             const controlsActive = (cameraMatrixChanged || apertureChanged || this.controls.down || this.controls.pinching);
 
-            if (controlsActive || this.controls.changed) {
-                this.rayBudget = 0.01;
+            if (cameraMatrixChanged || apertureChanged || this.controls.changed) {
+                this.rayBudget = 1;
                 this.frame = 0;
             }
 
             if (this.frameTime < 20) {
-                this.rayBudget *= 1.1;
+                this.rayBudget = Math.min(1000, this.rayBudget*1.05);
             } else if (this.frameTime > 40) {
                 this.rayBudget = Math.max(0.01, this.rayBudget*0.8);
             }
@@ -551,7 +567,7 @@ class WebGLTracer2 {
             var dprValue = dpr;
 
             if (controlsActive) {
-                this.rayBudget = 0.01;
+                this.rayBudget = 1;
                 if (this.renderer.domElement.width !== window.innerWidth ||
                     this.renderer.domElement.height !== window.innerHeight
                 ) {
@@ -582,7 +598,7 @@ class WebGLTracer2 {
             this.material.uniforms.showFocalPlane.value = !!window.showFocalPlane.checked;
             this.material.uniforms.showBoost.value = !!window.showBoost.checked;
 
-            this.material.uniforms.iTime.value = (Date.now() - this.startTime) / 1000;
+            this.material.uniforms.iTime.value = this.frame < 4 ? Math.SQRT2 : (Date.now() - this.startTime) / 1000;
             this.material.uniforms.cameraApertureSize.value = camera.apertureSize;
             this.material.uniforms.iResolution.value[0] = this.renderer.domElement.width;
             this.material.uniforms.iResolution.value[1] = this.renderer.domElement.height;
@@ -595,7 +611,7 @@ class WebGLTracer2 {
             this.varianceMaterial.uniforms.iFrame.value = this.frame;
 
             // Swap render targets for accumulator
-            const tmp = this.accumRenderTargetA;
+            let tmp = this.accumRenderTargetA;
             this.accumRenderTargetA = this.accumRenderTargetB;
             this.accumRenderTargetB = tmp;
 
@@ -609,14 +625,34 @@ class WebGLTracer2 {
             this.renderer.render(this.varianceMesh, camera, this.varianceRenderTarget);
 
             if (this.frame === 1) {
-                this.material.uniforms.rayBudget.value = this.rayBudget / 4;
+                this.material.uniforms.rayBudget.value = 1;
 
                 this.material.uniforms.iFrame.value = this.frame;
                 this.accumMaterial.uniforms.iFrame.value = this.frame;
                 this.varianceMaterial.uniforms.iFrame.value = this.frame;
 
                 // Swap render targets for accumulator
-                const tmp = this.accumRenderTargetA;
+                tmp = this.accumRenderTargetA;
+                this.accumRenderTargetA = this.accumRenderTargetB;
+                this.accumRenderTargetB = tmp;
+
+                this.renderer.render(this.scene, camera, this.renderTarget);
+                this.accumMaterial.uniforms.accumTex.value = this.accumRenderTargetA.texture;
+                this.renderer.render(this.accumMesh, camera, this.accumRenderTargetB);
+                this.frame++;
+
+                this.varianceMaterial.uniforms.previousTex.value = this.accumRenderTargetA.texture;
+                this.varianceMaterial.uniforms.tex.value = this.accumRenderTargetB.texture;
+                this.renderer.render(this.varianceMesh, camera, this.varianceRenderTarget);
+
+                this.material.uniforms.rayBudget.value = 1;
+
+                this.material.uniforms.iFrame.value = this.frame;
+                this.accumMaterial.uniforms.iFrame.value = this.frame;
+                this.varianceMaterial.uniforms.iFrame.value = this.frame;
+
+                // Swap render targets for accumulator
+                tmp = this.accumRenderTargetA;
                 this.accumRenderTargetA = this.accumRenderTargetB;
                 this.accumRenderTargetB = tmp;
 
