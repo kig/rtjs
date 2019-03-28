@@ -22,9 +22,7 @@ void intersectTris(inout Ray ray, in int coff, inout Hit closestHit) {
             break;
         }
         if (ray.lastTested != int(triIndex)) {
-            if (costVis) {
-                ray.light.r += 0.1;
-            }
+            ray.light.r += float(costVis) * 0.1;
             intersectTri(triangles, trianglesWidth, ray, int(triIndex - 1u), closestHit);
         }
     }
@@ -106,14 +104,13 @@ void intersectGrid(inout Ray ray, inout Hit closestHit) {
                 voxelsOffset = 0;
             }
         } else {
-            if (costVis) {
-                ray.light.b += 0.01;
-            }
+            ray.light.b += float(costVis) * 0.005;
             int vi = (readInt(voxelIndex, voxelIndexWidth, voxelIndexOffset + (ci >> 4)) >> (ci & 15)) & 1;
             if (vi != 0) {
                 // When at top-level node, jump to second-level node and continue intersect
                 // (push current node on stack, replace with sub-node stuff)
                 if (onTopLevel) {
+                    ray.light.g += float(costVis) * 0.05;
                     topC = c;
                     topNext = next;
                     topCi = ci;

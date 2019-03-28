@@ -74,12 +74,10 @@ bool traceBounce(inout Ray r, in Plane plane, in vec3 bg0, out Hit hit, out floa
 	// vec3 nml = hit.index >= 0 ? normalize(r.o-vec3(0.0, 0.5, 0.0)) : plane.normal;
 	// r.d = normalize(reflect(r.d, nml));
 	fresnel = pow(1.0 - abs(dot(r.d, nml)), 5.0);
-	if (!costVis) {
-		r.light += r.transmit * (1.0-exp(-hit.distance/40.0)) * bg0;
-		vec3 c = getColor(r, hit.index);
-		vec3 filmColor = abs(sin(r.o+4.0*r.d));
-		r.transmit = r.transmit * c; //mix(c, filmColor, fresnel);
-	}
+	r.light += float(!costVis) * (r.transmit * (1.0-exp(-hit.distance/40.0)) * bg0);
+	vec3 c = getColor(r, hit.index);
+	// vec3 filmColor = abs(sin(r.o+4.0*r.d));
+	r.transmit = r.transmit * c; //mix(c, filmColor, fresnel);
 	return true;
 }
 
@@ -92,13 +90,10 @@ vec3 trace(vec2 fragCoord) {
 	vec4 light = vec4(0.0);
 
 	vec3 bg0;
-
-	if (!costVis) {
-		bg0 = vec3(0.6+clamp(-1.0, 0.0, 1.0), 0.7, 0.8+(0.4*0.0) * abs(0.0));
-		bg0 += 0.25 * vec3(10.0, 6.0, 4.0) * 4.0 * pow(clamp(dot(vec3(0.0, 1.0, 0.0), normalize(vec3(6.0, 10.0, 8.0))), 0.0, 1.0), 64.0);
-		bg0 += vec3(4.0, 5.0, 7.0) * abs(1.0 - 0.0);
-		bg0 *= 0.2;
-	}
+	bg0 = vec3(0.6+clamp(-1.0, 0.0, 1.0), 0.7, 0.8+(0.4*0.0) * abs(0.0));
+	bg0 += 0.25 * vec3(10.0, 6.0, 4.0) * 4.0 * pow(clamp(dot(vec3(0.0, 1.0, 0.0), normalize(vec3(6.0, 10.0, 8.0))), 0.0, 1.0), 64.0);
+	bg0 += vec3(4.0, 5.0, 7.0) * abs(1.0 - 0.0);
+	bg0 *= 0.2;
 
 	float fresnel;
 	Hit hit;
@@ -123,7 +118,7 @@ vec3 trace(vec2 fragCoord) {
 				bg += vec3(10.0, 6.0, 4.0) * pow(clamp(dot(r.d, normalize(vec3(6.0, 10.0, 8.0))), 0.0, 1.0), 16.0);
 				bg += vec3(10.0, 8.0, 6.0) * 4.0 * pow(clamp(dot(r.d, normalize(vec3(6.0, 10.0, 8.0))), 0.0, 1.0), 256.0);
 				bg += vec3(4.0, 5.0, 7.0) * (abs(1.0 - r.d.z));
-				light.rgb += r.light + r.transmit * bg;
+				light.rgb += r.light + float(!costVis) * r.transmit * bg;
 				light.a += 1.0;
 				break;
 			}
@@ -133,7 +128,7 @@ vec3 trace(vec2 fragCoord) {
 		bg += vec3(10.0, 6.0, 4.0) * pow(clamp(dot(r.d, normalize(vec3(6.0, 10.0, 8.0))), 0.0, 1.0), 16.0);
 		bg += vec3(10.0, 8.0, 6.0) * 4.0 * pow(clamp(dot(r.d, normalize(vec3(6.0, 10.0, 8.0))), 0.0, 1.0), 256.0);
 		bg += vec3(4.0, 5.0, 7.0) * (abs(1.0 - r.d.z));
-		light.rgb += r.light + r.transmit * bg;
+		light.rgb += r.light + float(!costVis) * r.transmit * bg;
 		light.a += 1.0;
 	}
 

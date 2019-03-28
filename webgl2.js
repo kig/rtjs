@@ -806,13 +806,13 @@ function LoadOBJ(path) {
     var size = sub(bunnyTris.bbox.max, bunnyTris.bbox.min);
     var m = Math.max(size.x, size.y, size.z);
     // decent for dragon [32, 4, 2, 2] and [16,4,4,2] and [32,2,2,2]
-    var grid = [32,4,2,2];
+    var grid = [16,16]; //[32,4,2,2];
     if (bunnyTris.length < 10000) {
         // Use low-res grid
         // Fastest JS exec: [32]
         // Nice mix of VG steps + intersects: [4,4,4]
         // + Fast JS exec: [8, 8]
-        grid = [8,8];
+        // grid = [8,8];
     }
     console.timeEnd('OBJ munging');
 
