@@ -56,9 +56,9 @@ void intersectTris(in Array array, inout Ray ray, in int coff, in int childSize,
             break;
         }
         if (ray.lastTested != triIndex) {
-            if (costVis) {
-                ray.light.r += 0.1;
-            }
+            // if (costVis) {
+            //     ray.light.r += 0.1;
+            // }
             intersectTri(array, ray, triIndex, closestHit);
         }
     }
@@ -89,14 +89,14 @@ void intersectGridLeaf(in Array array, inout Ray ray, in int headOff, inout Hit 
 
     // Step through the grid while we're inside it
     for (int i = 0; i < 3*size; i++) {
-        if (costVis) {
-            ray.light.b += 0.01;
-        }
+        // if (costVis) {
+        //     ray.light.b += 0.01;
+        // }
         int vi = readInt(array, voxelsOff + ci);
         if (vi > 0) {
-            if (costVis) {
-                ray.light.g += 0.1;
-            }
+            // if (costVis) {
+            //     ray.light.g += 0.1;
+            // }
             int coff = childIndexOff + (vi - 1) * childSize;
             intersectTris(array, ray, coff, childSize, closestHit);
             if (closestHit.index >= 0) {
@@ -107,9 +107,9 @@ void intersectGridLeaf(in Array array, inout Ray ray, in int headOff, inout Hit 
             }
         } else if (vi < 0) {
             if (ray.lastTested != (-vi) - 1) {
-                if (costVis) {
-                    ray.light.r += 0.1;
-                }
+                // if (costVis) {
+                //     ray.light.r += 0.1;
+                // }
                 intersectTri(array, ray, (-vi) - 1, closestHit);
             }            
         }
@@ -188,14 +188,14 @@ void intersectGridNode(in Array array, inout Ray ray, in int headOff, inout Hit 
         if (c.x < 0 || c.y < 0 || c.z < 0 || c.x >= size || c.y >= size || c.z >= size) {
             return;
         }
-        if (costVis) {
-            ray.light.b += 0.01;
-        }
+        // if (costVis) {
+        //     ray.light.b += 0.01;
+        // }
         int vi = readInt(array, voxelsOff + ci);
         if (vi > 0) {
-            if (costVis) {
-                ray.light.b += 0.1;
-            }
+            // if (costVis) {
+            //     ray.light.b += 0.1;
+            // }
             int coff = childOff + readInt(array, childIndexOff + vi - 1);
             vec3 childOrigin = origin + vec3(c) * scale;
             float ct = forceIntersectBox(ray, childOrigin, childDims);
@@ -253,14 +253,14 @@ void intersectGridNodeLevel2(in Array array, inout Ray ray, in int headOff, inou
         if (c.x < 0 || c.y < 0 || c.z < 0 || c.x >= size || c.y >= size || c.z >= size) {
             return;
         }
-        if (costVis) {
-            ray.light.b += 0.01;
-        }
+        // if (costVis) {
+        //     ray.light.b += 0.01;
+        // }
         int vi = readInt(array, voxelsOff + ci);
         if (vi > 0) {
-            if (costVis) {
-                ray.light.b += 0.1;
-            }
+            // if (costVis) {
+            //     ray.light.b += 0.1;
+            // }
             int coff = childOff + readInt(array, childIndexOff + vi - 1);
             vec3 childOrigin = origin + vec3(c) * scale;
             float ct = forceIntersectBox(ray, childOrigin, childDims);
@@ -318,14 +318,14 @@ void intersectGridNodeLevel1(in Array array, inout Ray ray, in int headOff, inou
         if (c.x < 0 || c.y < 0 || c.z < 0 || c.x >= size || c.y >= size || c.z >= size) {
             return;
         }
-        if (costVis) {
-            ray.light.b += 0.01;
-        }
+        // if (costVis) {
+        //     ray.light.b += 0.01;
+        // }
         int vi = readInt(array, voxelsOff + ci);
         if (vi > 0) {
-            if (costVis) {
-                ray.light.b += 0.1;
-            }
+            // if (costVis) {
+            //     ray.light.b += 0.1;
+            // }
             int coff = childOff + readInt(array, childIndexOff + vi - 1);
             vec3 childOrigin = origin + vec3(c) * scale;
             float ct = forceIntersectBox(ray, childOrigin, childDims);
@@ -399,14 +399,14 @@ void intersectGridNodeLevel0(in Array array, inout Ray ray, in int headOff, inou
         if (c.x < 0 || c.y < 0 || c.z < 0 || c.x >= size || c.y >= size || c.z >= size) {
             return;
         }
-        if (costVis) {
-            ray.light.b += 0.01;
-        }
+        // if (costVis) {
+        //     ray.light.b += 0.01;
+        // }
         int vi = readInt(array, voxelsOff + ci);
         if (vi > 0) {
-            if (costVis) {
-                ray.light.b += 0.1;
-            }
+            // if (costVis) {
+            //     ray.light.b += 0.1;
+            // }
             int coff = childOff + readInt(array, childIndexOff + vi - 1);
             vec3 childOrigin = origin + vec3(c) * scale;
             float ct = forceIntersectBox(ray, childOrigin, childDims);

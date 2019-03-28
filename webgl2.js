@@ -42,7 +42,7 @@ class WebGLTracer2 {
 
         this.textures = {
             voxelIndex: this.createTexture(new Int16Array(arrays.voxelIndex.buffer), THREE.RedIntegerFormat, THREE.ShortType),
-            triIndices: this.createTexture(arrays.triIndices, THREE.RedIntegerFormat, THREE.UnsignedShortType),
+            triIndices: this.createTexture(arrays.triIndices, THREE.RedIntegerFormat, THREE.UnsignedIntType),
             triangles: this.createTexture(arrays.triangles, THREE.RedFormat, THREE.FloatType),
             normals: this.createTexture(arrays.normals, THREE.RedFormat, THREE.FloatType)
         };
@@ -749,7 +749,7 @@ function LoadOBJ(path) {
     const shaderNames = ['primitives', 'voxelgrid_superflat', 'trace2'];
 
     const shaderRes = shaderNames.map(name => fetch(`lib/${name}.glsl`));
-    const bunny = await ObjParse.load('bunny.obj');
+    const bunny = await ObjParse.load('polyhymenia-1.obj');
 
     const shaders = await Promise.all(shaderRes.map(async res => (await res).text()));
 

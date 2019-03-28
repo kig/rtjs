@@ -57,7 +57,7 @@ class WebGLTracer {
                 blueNoise: { value: blueNoiseTexture },
                 arrayTexWidth: { value: texSize },
                 iResolution: { value: [canvas.width, canvas.height] },
-                cameraFocusPoint: { value: camera.focusPoint },
+                cameraFocusDistance: { value: camera.focusDistance },
                 focusDistance: { value: 1.0 },
                 cameraApertureSize: { value: camera.apertureSize },
                 cameraInverseMatrix: { value: camera.inverseMatrix },
@@ -98,17 +98,18 @@ class WebGLTracer {
                 Array array = Array(arrayTexWidth);
                 vec4 sum = vec4(0.0);
                 float distanceFromCenter = length(vec2(iResolution.x / iResolution.y, 1.0) * (gl_FragCoord.xy / iResolution.xy - 0.5));
-                float samples = 9.0 - (8.0 * pow(clamp(2.0 * distanceFromCenter, 0.0, 1.0), 0.125) + random(vec2(iTime)));
+                float samples = 1.0; // 9.0 - (8.0 * pow(clamp(2.0 * distanceFromCenter, 0.0, 1.0), 0.125) + random(vec2(iTime)));
                 // for (float y = 0.0; y < aa; y++)
                 // for (float x = 0.0; x < aa; x++) {
-                for (float i = 0.0; i < samples; i++) {
+                // for (float i = 0.0; i < samples; i++) {
+                    float i = 0.0;
                     float y = mod(i, 2.0);
                     float x = i - y * 2.0;
                     float ry = mod(y + iFrame / aaSize, aaSize);
                     float rx = mod(x + iFrame - aaSize * ry, aaSize);
                     vec3 c = trace(array, gl_FragCoord.xy + (vec2(rx,ry) + vec2(random(0.5*vec2(rx,ry)), random(0.5+0.5*vec2(rx,ry)))) / aaSize);
                     sum += vec4(c, 1.0);
-                }
+                // }
                 FragColor = sum; //vec4(sum.rgb, 1.0);
             }
             `,
@@ -257,7 +258,7 @@ class WebGLTracer {
     }
 
     render() {
-        if (this.controls.changed || this.frame < 500) {
+        if (this.controls.changed || this.frame < 100) {
 
             if (this.controls.changed) {
                 this.frame = 0;
@@ -311,7 +312,7 @@ class WebGLTracer {
             this.material.uniforms.stripes.value = !!window.stripes.checked;
             this.material.uniforms.showFocalPlane.value = !!window.showFocalPlane.checked;
 
-            this.material.uniforms.iTime.value = 0; //(Date.now() - this.startTime) / 1000;
+            this.material.uniforms.iTime.value = (Date.now() - this.startTime) / 1000;
             this.material.uniforms.cameraApertureSize.value = camera.apertureSize;
             this.material.uniforms.iResolution.value[0] = this.renderer.domElement.width;
             this.material.uniforms.iResolution.value[1] = this.renderer.domElement.height;
@@ -398,7 +399,7 @@ function LoadOBJ(path) {
     const shaderNames = ['primitives', 'voxelgrid', 'voxelgrid_superflat', 'trace'];
 
     const shaderRes = shaderNames.map(name => fetch(`lib/${name}.glsl`));
-    const bunny = await ObjParse.load('bunny.obj');
+    const bunny = await ObjParse.load('polyhymenia-1.obj');
 
     const shaders = await Promise.all(shaderRes.map(async res => (await res).text()));
 

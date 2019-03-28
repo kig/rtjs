@@ -346,13 +346,13 @@ void intersectTri(vec3 v0, vec3 e1, vec3 e2, in int triIndex, inout Ray ray, ino
         return;
     }
 
-    if (costVis) {
-        float borderWidth = 0.025;
-        if (u < borderWidth || v < borderWidth || u+v > 1.0-borderWidth) {
-            ray.light.g += 1.0;
-            ray.light.b += 1.0;
-        }
-    }
+    // if (costVis) {
+    //     float borderWidth = 0.025;
+    //     if (u < borderWidth || v < borderWidth || u+v > 1.0-borderWidth) {
+    //         ray.light.g += 1.0;
+    //         ray.light.b += 1.0;
+    //     }
+    // }
 
     closestHit.index = triIndex;
     closestHit.distance = t;
