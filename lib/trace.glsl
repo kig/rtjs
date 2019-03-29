@@ -23,11 +23,11 @@ Ray setupRay(vec2 fragCoord, float off) {
 
 	// Camera aperture simulation
 
-	vec3 target = origin + (direction * 5.0); //cameraFocusDistance);
+	// vec3 target = origin + (direction * 5.0); //cameraFocusDistance);
 
-	vec3 lensOffset = applyMatrix4Rot(diskPoint(fragCoord+off) * cameraApertureSize, cameraMatrixWorld);
-	origin += lensOffset;
-	direction = normalize(target - origin);
+	// vec3 lensOffset = applyMatrix4Rot(diskPoint(fragCoord+off) * cameraApertureSize, cameraMatrixWorld);
+	// origin += lensOffset;
+	// direction = normalize(target - origin);
 
 	return Ray(
 		origin,

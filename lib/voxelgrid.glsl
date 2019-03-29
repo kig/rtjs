@@ -50,7 +50,7 @@ vec3 triNormal(in Array array, in vec3 point, in int triIndex) {
 }
 
 void intersectTris(in Array array, inout Ray ray, in int coff, in int childSize, inout Hit closestHit) {
-    for (int j = 0; j < childSize; j++) {
+    for (int j = 0; j < 64; j++) {
         int triIndex = readInt(array, coff + j);
         if (triIndex < 0) {
             break;
@@ -79,16 +79,15 @@ void intersectGridLeaf(in Array array, inout Ray ray, in int headOff, inout Hit 
     vec3 cf = toGrid(cp, scale, origin);
     ivec3 c = ivec3(cf);
 
-    if (c.x < 0 || c.y < 0 || c.z < 0 || c.x >= size || c.y >= size || c.z >= size) {
-        return;
-    }
-
     vec3 next = (max(vec3(0.0), vec3(cstep)) + vec3(cstep) * (vec3(c) - cf)) * deltaDist;
 
     int ci = c.z * size * size + c.y * size + c.x;
 
     // Step through the grid while we're inside it
     for (int i = 0; i < 3*size; i++) {
+        if (any(lessThan(c, ivec3(0))) || any(greaterThanEqual(c, ivec3(size)))) {
+            return;
+        }
         // if (costVis) {
         //     ray.light.b += 0.01;
         // }
@@ -118,31 +117,19 @@ void intersectGridLeaf(in Array array, inout Ray ray, in int headOff, inout Hit 
                 next.x += deltaDist.x;
                 c.x += cstep.x;
                 ci += cstep.x;
-                if (c.x < 0 || c.x >= size) {
-                    return;
-                }
             } else {
                 next.z += deltaDist.z;
                 c.z += cstep.z;
                 ci += cstep.z * size * size;
-                if (c.z < 0 || c.z >= size) {
-                    return;
-                }
             }
         } else if (next.y < next.z) {
             next.y += deltaDist.y;
             c.y += cstep.y;
             ci += cstep.y * size;
-            if (c.y < 0 || c.y >= size) {
-                return;
-            }
         } else {
             next.z += deltaDist.z;
             c.z += cstep.z;
             ci += cstep.z * size * size;
-            if (c.z < 0 || c.z >= size) {
-                return;
-            }
         }
     }
 }
@@ -185,7 +172,7 @@ void intersectGridNode(in Array array, inout Ray ray, in int headOff, inout Hit 
 
     // Step through the grid while we're inside it
     for (int i = 0; i < 3*size; i++) {
-        if (c.x < 0 || c.y < 0 || c.z < 0 || c.x >= size || c.y >= size || c.z >= size) {
+        if (any(lessThan(c, ivec3(0))) || any(greaterThanEqual(c, ivec3(size)))) {
             return;
         }
         // if (costVis) {
@@ -250,7 +237,7 @@ void intersectGridNodeLevel2(in Array array, inout Ray ray, in int headOff, inou
 
     // Step through the grid while we're inside it
     for (int i = 0; i < 3*size; i++) {
-        if (c.x < 0 || c.y < 0 || c.z < 0 || c.x >= size || c.y >= size || c.z >= size) {
+        if (any(lessThan(c, ivec3(0))) || any(greaterThanEqual(c, ivec3(size)))) {
             return;
         }
         // if (costVis) {
@@ -264,7 +251,7 @@ void intersectGridNodeLevel2(in Array array, inout Ray ray, in int headOff, inou
             int coff = childOff + readInt(array, childIndexOff + vi - 1);
             vec3 childOrigin = origin + vec3(c) * scale;
             float ct = forceIntersectBox(ray, childOrigin, childDims);
-            vec3 ccp = ray.o + ray.d * (ct + childScale * 0.001);
+            vec3 ccp = ray.o + ray.d * (ct + childScale * 0.1);
             intersectGridLeaf(array, ray, coff, closestHit, cstep, deltaDist, childOrigin, childSubSize, childScale, ccp);
             if (closestHit.index >= 0) {
                 return;
@@ -315,7 +302,7 @@ void intersectGridNodeLevel1(in Array array, inout Ray ray, in int headOff, inou
 
     // Step through the grid while we're inside it
     for (int i = 0; i < 3*size; i++) {
-        if (c.x < 0 || c.y < 0 || c.z < 0 || c.x >= size || c.y >= size || c.z >= size) {
+        if (any(lessThan(c, ivec3(0))) || any(greaterThanEqual(c, ivec3(size)))) {
             return;
         }
         // if (costVis) {
@@ -329,7 +316,7 @@ void intersectGridNodeLevel1(in Array array, inout Ray ray, in int headOff, inou
             int coff = childOff + readInt(array, childIndexOff + vi - 1);
             vec3 childOrigin = origin + vec3(c) * scale;
             float ct = forceIntersectBox(ray, childOrigin, childDims);
-            vec3 ccp = ray.o + ray.d * (ct + childScale * 0.001);
+            vec3 ccp = ray.o + ray.d * (ct + childScale * 0.01);
             intersectGridNodeLevel2(array, ray, coff, closestHit, cstep, deltaDist, childOrigin, childSubSize, childScale, ccp);
             if (closestHit.index >= 0) {
                 return;
@@ -396,7 +383,7 @@ void intersectGridNodeLevel0(in Array array, inout Ray ray, in int headOff, inou
 
     // Step through the grid while we're inside it
     for (int i = 0; i < 3*size; i++) {
-        if (c.x < 0 || c.y < 0 || c.z < 0 || c.x >= size || c.y >= size || c.z >= size) {
+        if (any(lessThan(c, ivec3(0))) || any(greaterThanEqual(c, ivec3(size)))) {
             return;
         }
         // if (costVis) {
