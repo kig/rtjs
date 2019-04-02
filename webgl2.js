@@ -2,9 +2,11 @@ const mobile = /mobile/i.test(navigator.userAgent);
 const dpr = (window.devicePixelRatio || 1);
 
 class WebGLTracer2 {
-    constructor(vg, traceGLSL, blueNoiseTexture) {
+    constructor(vg, traceGLSL, blueNoiseTexture, diffuseTexture) {
         var canvas = document.createElement( 'canvas' );
         var context = canvas.getContext( 'webgl2' );
+
+        this.diffuseTexture = diffuseTexture;
 
         this.voxelGrid = vg;
 
@@ -96,6 +98,8 @@ class WebGLTracer2 {
                 triIndices: { value: this.textures.triIndices },
                 triIndicesWidth: { value: this.textures.triIndices.image.width },
 
+                diffuseTexture: { value: this.diffuseTexture },
+
                 varianceTexture: { value: this.varianceRenderTarget.texture },
                 
                 vgOrigin: { value: new THREE.Vector3().copy(vg._origin) },
@@ -158,7 +162,7 @@ class WebGLTracer2 {
                     bool converged = varianceMetrics.z > 0.0;
                     bool convergedVariance = varianceMetrics.w > 0.0;
 
-                    if (rayBudget < 4.0 && ((iFrame > 2.0 && iFrame < 10.0) || (iFrame > 100.0 && errorLum < 0.0001)) && (converged || convergedVariance || (iFrame >= 2.0 && (errorLum < 0.01 || totalVariance < 0.01)))) {
+                    if (rayBudget < 0.5 && ((iFrame > 2.0 && iFrame < 10.0) || (iFrame > 100.0 && errorLum < 0.0001)) && (converged || convergedVariance || (iFrame >= 2.0 && (errorLum < 0.01 || totalVariance < 0.01)))) {
                         FragColor = vec4(0.0, 0.0, 0.0, 0.0);
                         return;
                     }
@@ -172,6 +176,7 @@ class WebGLTracer2 {
                     float boostExponent = 8.0 / max(0.125, rayBudget);
                     float fullBoostSamples = rayBudget * 5.0;
                     float boostFactor = (1.0 - clamp((distanceToCenter - fullBoostRadius) / boostRadius, 0.0, 1.0));
+                    boostFactor *= clamp(1.0 - (iFrame-10.0) / 10.0, 0.0, 1.0);
                     boostFactor += totalVariance/4.0;
                     boostFactor = clamp(boostFactor, 0.0, 1.0);
                     float boost = pow(boostFactor, boostExponent) * fullBoostSamples;
@@ -574,10 +579,10 @@ class WebGLTracer2 {
                 this.frame = 0;
             }
 
-            if (this.frameTime < 20) {
+            if (this.frameTime < 25) {
                 this.rayBudget = Math.min(1000, this.rayBudget*1.05);
             } else if (this.frameTime > 40) {
-                this.rayBudget = Math.max(0.01, this.rayBudget*0.8);
+                this.rayBudget = Math.max(0.1, this.rayBudget*0.8);
             }
             this.stats.log('Frame time', Math.round(this.frameTime*100)/100 + ' ms');
             this.stats.log('Ray budget', Math.round(this.rayBudget*100)/100);
@@ -745,11 +750,12 @@ function LoadOBJ(path) {
     };
 
     const blueNoiseTexture = new THREE.TextureLoader().load('blue_noise.png', onLoad);
+    const diffuseTexture = new THREE.TextureLoader().load('diffuse2.jpg');
 
     const shaderNames = ['primitives', 'voxelgrid_superflat', 'trace2'];
 
     const shaderRes = shaderNames.map(name => fetch(`lib/${name}.glsl`));
-    const bunny = await ObjParse.load('polyhymenia-1.obj');
+    const bunny = await ObjParse.load('bunny.obj');
 
     const shaders = await Promise.all(shaderRes.map(async res => (await res).text()));
 
@@ -812,7 +818,7 @@ function LoadOBJ(path) {
         // Fastest JS exec: [32]
         // Nice mix of VG steps + intersects: [4,4,4]
         // + Fast JS exec: [8, 8]
-        // grid = [8,8];
+        grid = [8,8];
     }
     console.timeEnd('OBJ munging');
 
@@ -822,7 +828,7 @@ function LoadOBJ(path) {
     console.timeEnd('Create VoxelGrid');
 
 
-    tracer = new WebGLTracer2(voxelGrid, shaders.join('\n'), blueNoiseTexture);
+    tracer = new WebGLTracer2(voxelGrid, shaders.join('\n'), blueNoiseTexture, diffuseTexture);
 
     
     window.roughness.oninput = window.apertureSize.oninput = function(ev) {

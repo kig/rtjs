@@ -261,7 +261,7 @@ void intersectPlane(in Ray ray, in Plane p, inout Hit hit) {
 	float pd = dot(p.normal, ray.d);
 	if (abs(pd) > 0.00001) {
 		float dist = dot(p.normal, p.point - ray.o) / pd;
-		if (dist > 0.0 && length(ray.o + ray.d * dist) < 1.5) {
+		if (dist > 0.0) {
 			hit.distance = dist;
 			hit.index = -2;
 		}

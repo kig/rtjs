@@ -11,6 +11,8 @@ uniform float roughness;
 uniform bool showFocalPlane;
 uniform bool stripes;
 
+uniform sampler2D diffuseTexture;
+
 const float SKY_DISTANCE = 1e6;
 
 
@@ -40,18 +42,25 @@ Ray setupRay(vec2 fragCoord, float off) {
 	);
 }
 
-vec3 getColor(in Ray r, in int index) {
+vec3 getTransmit(in Ray r, in int index) {
 	if (index < 0) {
-		return vec3(0.01);
+		return vec3(0.5);
 	} else {
-		return mix(vec3(0.95, 0.66, 0.15), vec3(0.05, 0.07, 0.12), float(stripes) * pow(fract(roughness*dot(r.o, r.o)*10.0), 0.125));
+		return texture(diffuseTexture, (r.o.xy+vec2(1.0,0.0)) * 0.5, -100.0).rgb; //mix(vec3(0.95, 0.66, 0.15), vec3(0.05, 0.07, 0.12), float(stripes) * pow(fract(roughness*dot(r.o, r.o)*10.0), 0.125));
 	}
+}
+
+vec3 getEmission(in Ray r, in int index) {
+    if (index < 0) {
+        return mix(vec3(0.0), vec3(10.0), float(length(r.o) > 1.2) * clamp(1.0 - (length(r.o) - 1.2) / 0.4, 0.0, 1.0) );
+    }
+    return vec3(0.0);
 }
 
 bool traceBounce(inout Ray r, in Plane plane, in vec3 bg0, out Hit hit, out float fresnel, out vec3 nml, in bool isPrimaryRay) {
 	hit = setupHit();
 	Hit hit2 = setupHit();
-	// intersectSphere(r, vec3(0.0, 0.5, 0.0), 0.5, hit);
+	// intersectSphere(r, vec3(0.0, 2.5, 0.0), 0.5, hit);
 	intersectGrid(r, hit);
 	intersectPlane(r, plane, hit2);
 	if (hit2.distance < hit.distance) {
@@ -60,25 +69,26 @@ bool traceBounce(inout Ray r, in Plane plane, in vec3 bg0, out Hit hit, out floa
 	if (hit.distance >= SKY_DISTANCE) {
 		return false;
 	}
-	if (showFocalPlane && isPrimaryRay) {
-		r.light.r += 10.0 * (
-			2.0 * clamp(0.1 / cameraApertureSize - abs(hit.distance - cameraFocusDistance), 0.0, 0.1) +
-			200.0 * max(0.0, 0.03 - abs(hit.distance - cameraFocusDistance)) 
-		);
-	}
+    r.light.r += float(showFocalPlane && isPrimaryRay) * 10.0 * (
+        2.0 * clamp(0.1 / cameraApertureSize - abs(hit.distance - cameraFocusDistance), 0.0, 0.1) +
+        200.0 * max(0.0, 0.03 - abs(hit.distance - cameraFocusDistance)) 
+    );
 	r.lastTested = hit.index;
-	r.o = r.o + (r.d * hit.distance);
+	r.o += r.d * hit.distance;
 	r.pathLength += hit.distance;
 	nml = hit.index >= 0 ? triNormal(triangles, trianglesWidth, normals, normalsWidth, r.o, hit.index) : plane.normal;
-	// float troughness = mod(float(hit.index+2), 100.0) / 99.0; 
-	// vec3 nml = hit.index >= 0 ? normalize(r.o-vec3(0.0, 0.5, 0.0)) : plane.normal;
-	// r.d = normalize(reflect(r.d, nml));
 	fresnel = pow(1.0 - abs(dot(r.d, nml)), 5.0);
-	r.light += float(!costVis) * (r.transmit * (1.0-exp(-hit.distance/40.0)) * bg0);
-	vec3 c = getColor(r, hit.index);
-	// vec3 filmColor = abs(sin(r.o+4.0*r.d));
-	r.transmit = r.transmit * c; //mix(c, filmColor, fresnel);
+	r.light += (float(!costVis) * r.transmit) * (getEmission(r, hit.index) + (1.0-exp(-hit.distance/40.0)) * bg0);
+	r.transmit *= getTransmit(r, hit.index);
 	return true;
+}
+
+vec3 skybox(in Ray r) {
+    vec3 bg = vec3(0.6+clamp(-r.d.y, 0.0, 1.0), 0.7, 0.8+(0.4*r.d.x) * abs(r.d.z));
+    bg += vec3(10.0, 6.0, 4.0) * pow(clamp(dot(r.d, normalize(vec3(6.0, 10.0, 8.0))), 0.0, 1.0), 16.0);
+    bg += vec3(10.0, 8.0, 6.0) * 4.0 * pow(clamp(dot(r.d, normalize(vec3(6.0, 10.0, 8.0))), 0.0, 1.0), 256.0);
+    bg += 0.5 * 5.5*vec3(0.7, 0.8, 1.0) * abs(1.0+r.d.y);
+    return bg;
 }
 
 vec3 trace(vec2 fragCoord) {
@@ -109,27 +119,17 @@ vec3 trace(vec2 fragCoord) {
 			if (stripes) {
 				r.d = normalize(mix(reflect(r.d, nml), nml + randomVec3(idxv), (1.0-fresnel) * fract(roughness*dot(r.o, r.o)*10.0)));// + (abs(dot(r.d, nml)) * roughness) * randomVec3(5.0+r.o+r.d));
 			} else {
-				r.d = normalize(mix(reflect(r.d, nml), nml + randomVec3(idxv), (1.0-fresnel) * (hit.index >= 0 ? roughness : 0.05)));// + (abs(dot(r.d, nml)) * roughness) * randomVec3(5.0+r.o+r.d));
+				r.d = normalize(mix(reflect(r.d, nml), nml + randomVec3(idxv), (1.0-fresnel) * (hit.index >= 0 ? roughness : fract(0.5*dot(r.o, r.o)*10.0))));// + (abs(dot(r.d, nml)) * roughness) * randomVec3(5.0+r.o+r.d));
 			}
 			r.invD = 1.0 / r.d;
 			r.o = r.o + nml * epsilon;
 			if (!traceBounce(r, plane, bg0, hit, fresnel, nml, false)) {
-				vec3 bg = vec3(0.6+clamp(-r.d.y, 0.0, 1.0), 0.7, 0.8+(0.4*r.d.x) * abs(r.d.z));
-				bg += vec3(10.0, 6.0, 4.0) * pow(clamp(dot(r.d, normalize(vec3(6.0, 10.0, 8.0))), 0.0, 1.0), 16.0);
-				bg += vec3(10.0, 8.0, 6.0) * 4.0 * pow(clamp(dot(r.d, normalize(vec3(6.0, 10.0, 8.0))), 0.0, 1.0), 256.0);
-				bg += vec3(4.0, 5.0, 7.0) * (abs(1.0 - r.d.z));
-				light.rgb += r.light + float(!costVis) * r.transmit * bg;
-				light.a += 1.0;
+				light += vec4(r.light + (float(!costVis) * r.transmit) * skybox(r), 1.0);
 				break;
 			}
 		}
 	} else {
-		vec3 bg = vec3(0.6+clamp(-r.d.y, 0.0, 1.0), 0.7, 0.8+(0.4*r.d.x) * abs(r.d.z));
-		bg += vec3(10.0, 6.0, 4.0) * pow(clamp(dot(r.d, normalize(vec3(6.0, 10.0, 8.0))), 0.0, 1.0), 16.0);
-		bg += vec3(10.0, 8.0, 6.0) * 4.0 * pow(clamp(dot(r.d, normalize(vec3(6.0, 10.0, 8.0))), 0.0, 1.0), 256.0);
-		bg += vec3(4.0, 5.0, 7.0) * (abs(1.0 - r.d.z));
-		light.rgb += r.light + float(!costVis) * r.transmit * bg;
-		light.a += 1.0;
+        light += vec4(r.light + (float(!costVis) * r.transmit) * skybox(r), 1.0);
 	}
 
 	return light.rgb / max(1.0, light.a);
