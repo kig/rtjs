@@ -114,7 +114,7 @@ bool traceBounce(inout Ray r, in Plane plane, in vec3 bg0, out Hit hit, out floa
         : plane.normal;
 	fresnel = pow(1.0 - abs(dot(r.d, nml)), 5.0);
 	r.light += (float(!costVis) * r.transmit) * (getEmission(r, hit.index, nml) + (1.0-exp(-hit.distance/40.0)) * bg0);
-    specular = (hit.index >= 0 ? triPlanar(nml, metallicTexture, r.o, vec3(1.0, 0.0, 0.0), vec3(0.5)).r > 1.5 : true) ? false : (random(r.o.xz) < 0.03 + 0.97*fresnel);
+    specular = (hit.index >= 0 ? triPlanar(nml, metallicTexture, r.o, vec3(1.0, 0.0, 0.0), vec3(0.5)).r > 0.5 : true) ? false : (random(r.o.xz) < 0.03 + 0.97*fresnel);
 	transmit = getTransmit(r, hit.index, nml, specular);
 	return true;
 }
