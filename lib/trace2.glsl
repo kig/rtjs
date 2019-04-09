@@ -12,6 +12,9 @@ uniform bool showFocalPlane;
 uniform bool stripes;
 
 uniform sampler2D diffuseTexture;
+uniform sampler2D normalTexture;
+uniform sampler2D metallicTexture;
+uniform sampler2D roughnessTexture;
 
 const float SKY_DISTANCE = 1e6;
 
@@ -42,22 +45,52 @@ Ray setupRay(vec2 fragCoord, float off) {
 	);
 }
 
-vec3 getTransmit(in Ray r, in int index) {
+vec4 triPlanar(vec3 nml, sampler2D tex, vec3 p0, vec3 offset, vec3 scale) {
+    vec3 blending = pow(nml, vec3(8.0));
+    blending = normalize(max(blending, 0.00001)); // Force weights to sum to 1.0
+    float b = (blending.x + blending.y + blending.z);
+    blending /= vec3(b, b, b);
+    vec3 p = (p0 + offset * scale);
+    vec4 xy = texture(tex, p.xy, -100.0);
+    vec4 xz = texture(tex, p.xz, -100.0);
+    vec4 yz = texture(tex, p.yz, -100.0);
+    return xy * blending.z + xz * blending.y + yz * blending.x;
+}
+
+vec3 getTransmit(in Ray r, in int index, in vec3 nml, in bool specular) {
 	if (index < 0) {
-		return vec3(0.5);
+		return vec3(0.05);
 	} else {
-		return texture(diffuseTexture, (r.o.xy+vec2(1.0,0.0)) * 0.5, -100.0).rgb; //mix(vec3(0.95, 0.66, 0.15), vec3(0.05, 0.07, 0.12), float(stripes) * pow(fract(roughness*dot(r.o, r.o)*10.0), 0.125));
+        if (specular) {
+            return vec3(1.0);
+        } else {
+    		return mod(length(r.o), 0.1) < 0.05 ? vec3(0.05) : vec3(0.35); //triPlanar(nml, diffuseTexture, r.o, vec3(1.0, 0.0, 0.0), vec3(0.5)).rgb;
+        }
+        //mix(vec3(0.95, 0.66, 0.15), vec3(0.05, 0.07, 0.12), float(stripes) * pow(fract(roughness*dot(r.o, r.o)*10.0), 0.125));
 	}
 }
 
-vec3 getEmission(in Ray r, in int index) {
+vec3 getEmission(in Ray r, in int index, in vec3 nml) {
     if (index < 0) {
         return mix(vec3(0.0), vec3(10.0), float(length(r.o) > 1.2) * clamp(1.0 - (length(r.o) - 1.2) / 0.4, 0.0, 1.0) );
     }
     return vec3(0.0);
 }
 
-bool traceBounce(inout Ray r, in Plane plane, in vec3 bg0, out Hit hit, out float fresnel, out vec3 nml, in bool isPrimaryRay) {
+vec3 getNormal(Ray r, int hitIndex) {
+    vec3 nml = triNormal(triangles, trianglesWidth, normals, normalsWidth, r.o, hitIndex);
+    if (mod(length(r.o), 0.1) < 0.0)
+        return nml;
+
+    vec3 basisA[3];
+    orthoBasis(basisA, nml);
+    mat3 basis = mat3(basisA[0], basisA[1], basisA[2]);
+    return normalize(
+        basis * (triPlanar(nml, normalTexture, r.o, vec3(1.0, 0.0, 0.0), vec3(0.5)).rgb * 2.0 - 1.0)
+    );
+}
+
+bool traceBounce(inout Ray r, in Plane plane, in vec3 bg0, out Hit hit, out float fresnel, out vec3 nml, out vec3 transmit, in bool isPrimaryRay, inout bool specular) {
 	hit = setupHit();
 	Hit hit2 = setupHit();
 	// intersectSphere(r, vec3(0.0, 2.5, 0.0), 0.5, hit);
@@ -76,16 +109,19 @@ bool traceBounce(inout Ray r, in Plane plane, in vec3 bg0, out Hit hit, out floa
 	r.lastTested = hit.index;
 	r.o += r.d * hit.distance;
 	r.pathLength += hit.distance;
-	nml = hit.index >= 0 ? triNormal(triangles, trianglesWidth, normals, normalsWidth, r.o, hit.index) : plane.normal;
+	nml = hit.index >= 0 
+        ? getNormal(r, hit.index)
+        : plane.normal;
 	fresnel = pow(1.0 - abs(dot(r.d, nml)), 5.0);
-	r.light += (float(!costVis) * r.transmit) * (getEmission(r, hit.index) + (1.0-exp(-hit.distance/40.0)) * bg0);
-	r.transmit *= getTransmit(r, hit.index);
+	r.light += (float(!costVis) * r.transmit) * (getEmission(r, hit.index, nml) + (1.0-exp(-hit.distance/40.0)) * bg0);
+    specular = (hit.index >= 0 ? triPlanar(nml, metallicTexture, r.o, vec3(1.0, 0.0, 0.0), vec3(0.5)).r > 1.5 : true) ? false : (random(r.o.xz) < 0.03 + 0.97*fresnel);
+	transmit = getTransmit(r, hit.index, nml, specular);
 	return true;
 }
 
 vec3 skybox(in Ray r) {
     vec3 bg = vec3(0.6+clamp(-r.d.y, 0.0, 1.0), 0.7, 0.8+(0.4*r.d.x) * abs(r.d.z));
-    bg += vec3(10.0, 6.0, 4.0) * pow(clamp(dot(r.d, normalize(vec3(6.0, 10.0, 8.0))), 0.0, 1.0), 16.0);
+    bg += vec3(10.0, 6.0, 4.0) * pow(clamp(dot(r.d, normalize(vec3(6.0, 10.0, 8.0))), 0.0, 1.0), 64.0);
     bg += vec3(10.0, 8.0, 6.0) * 4.0 * pow(clamp(dot(r.d, normalize(vec3(6.0, 10.0, 8.0))), 0.0, 1.0), 256.0);
     bg += 0.5 * 5.5*vec3(0.7, 0.8, 1.0) * abs(1.0+r.d.y);
     return bg;
@@ -108,22 +144,34 @@ vec3 trace(vec2 fragCoord) {
 	float fresnel;
 	Hit hit;
 	vec3 nml;
+    vec3 transmit;
+    bool specular;
 
-	bool hitScene = traceBounce(r, plane, bg0, hit, fresnel, nml, true);
+	bool hitScene = traceBounce(r, plane, bg0, hit, fresnel, nml, transmit, true, specular);
 
 	if (hitScene) {
 		float fakeBounce = 0.0;
 		for (int i = 0; i < 5; i++) {
 			float idx = fragCoord.y * iResolution.x * 4.0 + fragCoord.x * 4.0 + fakeBounce;
 			ivec2 idxv = ivec2(mod(idx / 1024.0, 1024.0), mod(idx, 1024.0));
-			if (stripes) {
-				r.d = normalize(mix(reflect(r.d, nml), nml + randomVec3(idxv), (1.0-fresnel) * fract(roughness*dot(r.o, r.o)*10.0)));// + (abs(dot(r.d, nml)) * roughness) * randomVec3(5.0+r.o+r.d));
-			} else {
-				r.d = normalize(mix(reflect(r.d, nml), nml + randomVec3(idxv), (1.0-fresnel) * (hit.index >= 0 ? roughness : fract(0.5*dot(r.o, r.o)*10.0))));// + (abs(dot(r.d, nml)) * roughness) * randomVec3(5.0+r.o+r.d));
-			}
+            float troughness = specular ? roughness : (mod(length(r.o), 0.1) < 0.0 ? 1.0 : triPlanar(nml, roughnessTexture, r.o, vec3(1.0, 0.0, 0.0), vec3(0.5)).r);
+            float randomDirFactor = (1.0 - fresnel) * (hit.index >= 0 ? troughness : fract(0.5*dot(r.o, r.o)*10.0));
+
+            float bounceCount = (randomDirFactor*0.1 > random(r.o.xy)) ? 2.0 : 1.0;
+
+            vec3 retroReflectiveness = hit.index >= 0
+                ? vec3(float((random(r.d.xz) < 0.1 && bounceCount > 1.0) || (mod(length(r.o), 0.1) < 0.0 && random(r.o.yz) < (0.75 - 0.75 * fresnel))))
+                : vec3(0.0);
+
+            r.d = normalize(mix(mix(
+                reflect(r.d, nml), 
+                nml + randomVec3(idxv),
+                randomDirFactor
+            ), -r.d + randomVec3(idxv)*0.1, retroReflectiveness)); // + (abs(dot(r.d, nml)) * roughness) * randomVec3(5.0+r.o+r.d));
+            r.transmit *= pow(transmit, vec3(bounceCount));
 			r.invD = 1.0 / r.d;
 			r.o = r.o + nml * epsilon;
-			if (!traceBounce(r, plane, bg0, hit, fresnel, nml, false)) {
+			if (!traceBounce(r, plane, bg0, hit, fresnel, nml, transmit, false, specular)) {
 				light += vec4(r.light + (float(!costVis) * r.transmit) * skybox(r), 1.0);
 				break;
 			}

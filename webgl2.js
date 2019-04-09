@@ -2,11 +2,14 @@ const mobile = /mobile/i.test(navigator.userAgent);
 const dpr = (window.devicePixelRatio || 1);
 
 class WebGLTracer2 {
-    constructor(vg, traceGLSL, blueNoiseTexture, diffuseTexture) {
+    constructor(vg, traceGLSL, blueNoiseTexture, diffuseTexture, metallicTexture, roughnessTexture, normalTexture) {
         var canvas = document.createElement( 'canvas' );
         var context = canvas.getContext( 'webgl2' );
 
         this.diffuseTexture = diffuseTexture;
+        this.metallicTexture = metallicTexture;
+        this.roughnessTexture = roughnessTexture;
+        this.normalTexture = normalTexture;
 
         this.voxelGrid = vg;
 
@@ -99,6 +102,9 @@ class WebGLTracer2 {
                 triIndicesWidth: { value: this.textures.triIndices.image.width },
 
                 diffuseTexture: { value: this.diffuseTexture },
+                metallicTexture: { value: this.metallicTexture },
+                roughnessTexture: { value: this.roughnessTexture },
+                normalTexture: { value: this.normalTexture },
 
                 varianceTexture: { value: this.varianceRenderTarget.texture },
                 
@@ -162,7 +168,7 @@ class WebGLTracer2 {
                     bool converged = varianceMetrics.z > 0.0;
                     bool convergedVariance = varianceMetrics.w > 0.0;
 
-                    if (rayBudget < 0.5 && ((iFrame > 2.0 && iFrame < 10.0) || (iFrame > 100.0 && errorLum < 0.0001)) && (converged || convergedVariance || (iFrame >= 2.0 && (errorLum < 0.01 || totalVariance < 0.01)))) {
+                    if (iFrame < 30.0 && ( ((iFrame > 2.0 && iFrame < 10.0) || (iFrame > 100.0 && errorLum < 0.0001)) && (converged || convergedVariance || (iFrame >= 2.0 && (errorLum < 0.01 || totalVariance < 0.01))) )) {
                         FragColor = vec4(0.0, 0.0, 0.0, 0.0);
                         return;
                     }
@@ -184,7 +190,7 @@ class WebGLTracer2 {
 
                     samples = boost + sampleCountJitter;
 
-                    if (rayBudget > 4.0 && iFrame > 100.0) {
+                    if (iFrame > 30.0) {
                         samples = 1.0 + totalVariance;
                     }
                     
@@ -543,7 +549,7 @@ class WebGLTracer2 {
     }
 
     render() {
-        if (true) {
+        if (this.controls.changed || this.frame < 50) {
 
             if (this.controls.focusPoint) {
                 const ray = this.setupRay(this.controls.focusPoint);
@@ -656,6 +662,14 @@ class WebGLTracer2 {
             this.renderer.render(this.varianceMesh, camera, this.varianceRenderTarget);
 
             if (this.frame === 1) {
+                // Biased start:
+                //
+                // 1) Gaussian blur the light
+                // 2) Use blurred value as starting bias for integration 
+                //    with weight / kernel width determined by roughness / edginess
+                //    Rougher => more variance => more weight for blur
+                //    Edgier => lower blur kernel width
+
                 this.material.uniforms.rayBudget.value = 1;
 
                 this.material.uniforms.iFrame.value = this.frame;
@@ -750,7 +764,20 @@ function LoadOBJ(path) {
     };
 
     const blueNoiseTexture = new THREE.TextureLoader().load('blue_noise.png', onLoad);
-    const diffuseTexture = new THREE.TextureLoader().load('diffuse2.jpg');
+    blueNoiseTexture.wrapS = THREE.RepeatWrapping;
+    blueNoiseTexture.wrapT = THREE.RepeatWrapping;
+    const diffuseTexture = new THREE.TextureLoader().load('Metal_basecolor.png');
+    diffuseTexture.wrapS = THREE.RepeatWrapping;
+    diffuseTexture.wrapT = THREE.RepeatWrapping;
+    const metallicTexture = new THREE.TextureLoader().load('Metal_metallic.png');
+    metallicTexture.wrapS = THREE.RepeatWrapping;
+    metallicTexture.wrapT = THREE.RepeatWrapping;
+    const normalTexture = new THREE.TextureLoader().load('Metal_normal.png');
+    normalTexture.wrapS = THREE.RepeatWrapping;
+    normalTexture.wrapT = THREE.RepeatWrapping;
+    const roughnessTexture = new THREE.TextureLoader().load('Metal_roughness.png');
+    roughnessTexture.wrapS = THREE.RepeatWrapping;
+    roughnessTexture.wrapT = THREE.RepeatWrapping;
 
     const shaderNames = ['primitives', 'voxelgrid_superflat', 'trace2'];
 
@@ -828,7 +855,7 @@ function LoadOBJ(path) {
     console.timeEnd('Create VoxelGrid');
 
 
-    tracer = new WebGLTracer2(voxelGrid, shaders.join('\n'), blueNoiseTexture, diffuseTexture);
+    tracer = new WebGLTracer2(voxelGrid, shaders.join('\n'), blueNoiseTexture, diffuseTexture, metallicTexture, roughnessTexture, normalTexture);
 
     
     window.roughness.oninput = window.apertureSize.oninput = function(ev) {
