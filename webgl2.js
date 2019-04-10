@@ -809,7 +809,7 @@ function LoadOBJ(path) {
     var scale = 2.0 / (bbox.max.y - bbox.min.y);
     var xOffset = -(bbox.max.x+bbox.min.x)/2;
     var zOffset = -(bbox.max.z+bbox.min.z)/2;
-    var yOffset = -bbox.min.y;
+    var yOffset = -bbox.min.y + 0.001;
 
     for (var i = 0; i < verts.length; i += 3) {
         verts[i] += xOffset;
