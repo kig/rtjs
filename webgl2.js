@@ -191,7 +191,7 @@ class WebGLTracer2 {
                     samples = boost + sampleCountJitter;
 
                     if (iFrame > 30.0) {
-                        samples = 1.0 + totalVariance;
+                        samples += 1.0 + totalVariance;
                     }
                     
                     if (showBoost) {
@@ -549,7 +549,7 @@ class WebGLTracer2 {
     }
 
     render() {
-        if (this.controls.changed || this.frame < 50) {
+        if (this.controls.changed || this.frame < 250) {
 
             if (this.controls.focusPoint) {
                 const ray = this.setupRay(this.controls.focusPoint);
