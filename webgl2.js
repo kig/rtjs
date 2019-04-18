@@ -1,5 +1,13 @@
 const mobile = /mobile/i.test(navigator.userAgent);
-const dpr = (window.devicePixelRatio || 1);
+const dpr = 1; //(window.devicePixelRatio || 1);
+
+class Coating {
+    
+}
+
+class Material {
+
+}
 
 class WebGLTracer2 {
     constructor(vg, traceGLSL, blueNoiseTexture, diffuseTexture, metallicTexture, roughnessTexture, normalTexture) {
@@ -45,11 +53,55 @@ class WebGLTracer2 {
             return u8;
         };
 
+        
+
+        var specular = [
+            1,0,1, // color
+            -3,    // roughness
+            1.5,   // IOR
+            0.05,  // retroreflectiveness
+            0, 0,  // anisotropy
+            -2,     // density
+            -4,     // forwardScatter
+            0,     // thickness
+            0,     // transmission
+            0      // subsurface
+        ];
+        var coat = [
+            0,1,0, // color
+            0,   // roughness
+            1.5,    // IOR
+            0,  // retroreflectiveness
+            0, 0,  // anisotropy
+            0,     // density
+            0,     // forwardScatter
+            0,     // thickness
+            0,     // transmission
+            0      // subsurface
+        ];
+        var volume = [
+            -1,1,1, // color
+            -3,   // roughness
+            10,    // IOR
+            0.05,  // retroreflectiveness
+            0, 0,  // anisotropy
+            1,     // density
+            -4,     // forwardScatter
+            0,     // thickness
+            0,     // transmission
+            0      // subsurface
+        ];
+        var emission = [0,0,0];
+
         this.textures = {
             voxelIndex: this.createTexture(new Int16Array(arrays.voxelIndex.buffer), THREE.RedIntegerFormat, THREE.ShortType),
             triIndices: this.createTexture(arrays.triIndices, THREE.RedIntegerFormat, THREE.UnsignedIntType),
             triangles: this.createTexture(arrays.triangles, THREE.RedFormat, THREE.FloatType),
-            normals: this.createTexture(arrays.normals, THREE.RedFormat, THREE.FloatType)
+            normals: this.createTexture(arrays.normals, THREE.RedFormat, THREE.FloatType),
+            materialIndices: this.createTexture(arrays.triIndices.map(i => 0), THREE.RedIntegerFormat, THREE.UnsignedIntType),
+            materials: this.createTexture(new Float32Array(
+                specular.concat(coat).concat(volume).concat([0,0]).concat(emission)
+            ), THREE.RedFormat, THREE.FloatType)
         };
 
         this.renderer = new THREE.WebGLRenderer({ canvas, context });
@@ -100,11 +152,14 @@ class WebGLTracer2 {
                 voxelIndexWidth: { value: this.textures.voxelIndex.image.width },
                 triIndices: { value: this.textures.triIndices },
                 triIndicesWidth: { value: this.textures.triIndices.image.width },
+                materialIndices: { value: this.textures.materialIndices },
+                materialIndicesWidth: { value: this.textures.materialIndices.image.width },
+                materials: { value: this.textures.materials },
+                materialsWidth: { value: this.textures.materials.image.width },
 
-                diffuseTexture: { value: this.diffuseTexture },
-                metallicTexture: { value: this.metallicTexture },
-                roughnessTexture: { value: this.roughnessTexture },
-                normalTexture: { value: this.normalTexture },
+                materialTextures: {
+                    value: [this.diffuseTexture, this.metallicTexture, this.roughnessTexture, this.normalTexture]
+                },
 
                 varianceTexture: { value: this.varianceRenderTarget.texture },
                 
@@ -168,7 +223,7 @@ class WebGLTracer2 {
                     bool converged = varianceMetrics.z > 0.0;
                     bool convergedVariance = varianceMetrics.w > 0.0;
 
-                    if (iFrame < 30.0 && ( ((iFrame > 2.0 && iFrame < 10.0) || (iFrame > 100.0 && errorLum < 0.0001)) && (converged || convergedVariance || (iFrame >= 2.0 && (errorLum < 0.01 || totalVariance < 0.01))) )) {
+                    if (( ((iFrame > 2.0 && iFrame < 10.0) || (iFrame > 30.0 && errorLum < 0.0001)) && (converged || convergedVariance || (iFrame >= 2.0 && (errorLum < 0.01 || totalVariance < 0.01))) )) {
                         FragColor = vec4(0.0, 0.0, 0.0, 0.0);
                         return;
                     }
@@ -186,12 +241,11 @@ class WebGLTracer2 {
                     boostFactor += totalVariance/4.0;
                     boostFactor = clamp(boostFactor, 0.0, 1.0);
                     float boost = pow(boostFactor, boostExponent) * fullBoostSamples;
-                    float sampleCountJitter = 0.0; //fract(random(vec2(((1.0+sqrt(2.0)))+iTime, (9.0+sqrt(221.0))*0.1+iTime)));
-
+                    float sampleCountJitter = 0.0;
                     samples = boost + sampleCountJitter;
 
-                    if (iFrame > 30.0) {
-                        samples += 1.0 + totalVariance;
+                    if (iFrame > 10.0) {
+                        samples += totalVariance + fract(random(vec2(((1.0+sqrt(2.0)))+iTime, (9.0+sqrt(221.0))*0.1+iTime)));
                     }
                     
                     if (showBoost) {
@@ -398,11 +452,75 @@ class WebGLTracer2 {
         this.blurMesh.position.z = -0.5;
         this.blurMesh.rotation.y = Math.PI;
 
+        this.bloomMaterial = new THREE.RawShaderMaterial({
+            uniforms: {
+                tex: { value: this.accumRenderTargetB.texture },
+                sigma: {value: 7.5 },
+                startBrightness: {value: 4},
+                softKnee: {value: 0},
+                intensity: {value: 1}
+            },
+            vertexShader: this.material.vertexShader,
+            fragmentShader: `#version 300 es
+
+            precision highp float;
+            precision highp int;
+            
+            uniform sampler2D tex;
+            uniform float sigma;
+
+            uniform float startBrightness;
+            uniform float softKnee;
+            uniform float intensity;
+
+            out vec4 FragColor;    
+
+            float normpdf(in float x, in float sigma) {
+                return 0.39894 * exp(-0.5 * x * x / (sigma * sigma)) / sigma;
+            }
+
+            void main() {
+                const float radius = 5.0;
+                
+                vec4 accum = texelFetch(tex, ivec2(gl_FragCoord.xy), 0);
+                accum.rgb /= accum.a;
+
+                for (float y = -radius; y <= radius; y++) {
+                    for (float x = -radius; x <= radius; x++) {
+                        if (x == 0.0 && y == 0.0) {
+                            continue;
+                        }
+                        float d = pow(length(vec2(x,y)/2.0), 4.0);
+                        vec4 c = texelFetch(tex, ivec2(gl_FragCoord.xy + vec2(x,y)), 0);
+                        c.rgb /= c.a;
+                        if ((c.r+c.g+c.b)/3.0 > startBrightness) {
+                            accum.rgb += normpdf(d, sigma) * max(vec3(0.0), c.rgb - startBrightness) * intensity;
+                        }
+                    }
+                }
+
+                accum.rgb *= accum.a;
+
+                FragColor = accum;
+            }
+            `,
+            depthTest: false,
+            depthWrite: false
+        });
+        this.bloomMesh = new THREE.Mesh(
+            new THREE.PlaneGeometry(2,2,1),
+            this.bloomMaterial
+        );
+        this.bloomMesh.frustumCulled = false;
+        this.bloomMesh.position.z = -0.5;
+        this.bloomMesh.rotation.y = Math.PI;
+
         this.blitMaterial = new THREE.RawShaderMaterial({
             uniforms: {
                 tex: { value: this.renderTarget.texture },
                 varianceTexture: { value: this.varianceRenderTarget.texture },
                 showConverged: { value: false },
+                iFrame: { value: 0 },
                 showSampleCount: { value: false }
             },
             vertexShader: this.material.vertexShader,
@@ -413,6 +531,8 @@ class WebGLTracer2 {
             
             uniform sampler2D tex;
             uniform sampler2D varianceTexture;
+
+            uniform float iFrame;
 
             uniform bool showConverged;
             uniform bool showSampleCount;
@@ -472,7 +592,7 @@ class WebGLTracer2 {
                 }
 
                 if (showConverged) {
-                    if ((converged || convergedVariance || errorLum < 0.01 || totalVariance < 0.01 )) {
+                    if (( ((errorLum < 0.0001)) && (converged || convergedVariance || (iFrame >= 2.0 && (errorLum < 0.01 || totalVariance < 0.01))) )) {
                         FragColor.r -= 0.5;
                         FragColor.b += 0.5;
                     } else {
@@ -481,9 +601,8 @@ class WebGLTracer2 {
                     }
                 }
                 if (showSampleCount) {
-                    FragColor = vec4(src.aaa / 100.0, 1.0);
+                    FragColor = vec4(vec3(mod(src.a/50.0, 4.0)), 1.0);
                 }
-                // FragColor = vec4(errorLum/2.0, 0.0, src.a/10.0, 1.0);
             }
             `,
             depthTest: false,
@@ -586,9 +705,9 @@ class WebGLTracer2 {
             }
 
             if (this.frameTime < 25) {
-                this.rayBudget = Math.min(1000, this.rayBudget*1.05);
+                this.rayBudget = Math.min(1000, this.rayBudget*1.1);
             } else if (this.frameTime > 40) {
-                this.rayBudget = Math.max(0.1, this.rayBudget*0.8);
+                this.rayBudget = Math.max(1, this.rayBudget*0.8);
             }
             this.stats.log('Frame time', Math.round(this.frameTime*100)/100 + ' ms');
             this.stats.log('Ray budget', Math.round(this.rayBudget*100)/100);
@@ -644,6 +763,7 @@ class WebGLTracer2 {
             this.material.uniforms.cameraFocusDistance.value = this.focusDistance;
 
             this.material.uniforms.iFrame.value = this.frame;
+            this.blitMaterial.uniforms.iFrame.value = this.frame;
             this.accumMaterial.uniforms.iFrame.value = this.frame;
             this.varianceMaterial.uniforms.iFrame.value = this.frame;
 
@@ -721,7 +841,9 @@ class WebGLTracer2 {
                 this.renderer.render(this.blurMesh, camera, this.renderTarget);
                 this.blitMaterial.uniforms.tex.value = this.renderTarget.texture;
             } else {
-                this.blitMaterial.uniforms.tex.value = this.accumRenderTargetB.texture;
+                this.bloomMaterial.uniforms.tex.value = this.accumRenderTargetB.texture;
+                this.renderer.render(this.bloomMesh, camera, this.renderTarget);
+                this.blitMaterial.uniforms.tex.value = this.renderTarget.texture;
             }
             this.renderer.render(this.blitMesh, camera);
 

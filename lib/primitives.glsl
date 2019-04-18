@@ -47,7 +47,60 @@ struct Ray {
     vec3 transmit;
     vec3 light;
     float pathLength;
+    float ior;
     int lastTested;
+};
+
+struct Coating {
+    // Specular material transmit
+    vec3 color;
+
+    // Specular material surface roughness
+    float roughness;
+
+    // Index of refraction of the specular material
+    // P(specular) = pow((currentIOR-materialIOR)/(currentIOR+materialIOR), 2)
+    float IOR;
+
+    // Retroreflectiveness of the specular surface.
+    // Retroreflect is a property of concave surface structures where 
+    // the incoming light is reflected back to its source
+    // after three+ bounces.
+    float retroReflect;
+
+    // Anisotropy in UV space
+    // Negative values are used for circular pattern radius
+    float anisotropy;
+    float anisotropyAngle;
+
+    // Density of the pigment for subsurface scattering
+    float density;
+
+    // Proportion of forward scattering
+    float forwardScatter;
+
+    // Thickness of the layer
+    float thickness;
+
+    // Proportion of light refracted through the material from surface
+    float transmission;
+
+    // Subsurface scattering probability per unit of depth
+    float subsurface;
+};
+
+struct Material {
+    Coating specular;
+    Coating coat;
+
+    Coating pigment;
+
+    // Thin-shell object.
+    float thinWalled;
+    float wallThickness;
+
+    // Color of light emitted by the material
+    vec3 emission;
 };
 
 struct Array {
@@ -387,4 +440,52 @@ vec3 triNormal(
     vec3 n2 = fromOct(readVec2(normals, normalsWidth, nmlOff + 4));
 
     return normalize(mix(mix(n0, n2, v), n1, u));
+}
+
+uint readMaterialIndex(in usampler2D tex, in int texWidth, in int idx) {
+    return readUint(tex, texWidth, idx);
+}
+
+Coating newCoating() {
+    return Coating(
+        vec3(0.),
+        0.,0.,0.,0.,
+        0.,0.,0.,0.,
+        0., 0.
+    );
+}
+
+Material newMaterial() {
+    Coating c = newCoating();
+    return Material(c,c,c, 0.,0., vec3(0.));
+}
+
+Coating readCoating(in sampler2D tex, in int materialsWidth, inout int idx) {
+    Coating c = newCoating();
+    c.color = readVec3(tex, materialsWidth, idx); // 3
+    idx += 3;
+    c.roughness = readFloat(tex, materialsWidth, idx++); // 4
+    c.IOR = readFloat(tex, materialsWidth, idx++);
+    c.retroReflect = readFloat(tex, materialsWidth, idx++); // 6
+    c.anisotropy = readFloat(tex, materialsWidth, idx++);
+    c.anisotropyAngle = readFloat(tex, materialsWidth, idx++); // 8
+    c.density = readFloat(tex, materialsWidth, idx++);
+    c.forwardScatter = readFloat(tex, materialsWidth, idx++); // 10
+    c.thickness = readFloat(tex, materialsWidth, idx++);
+    c.transmission = readFloat(tex, materialsWidth, idx++); // 12
+    c.subsurface = readFloat(tex, materialsWidth, idx++); // 13
+    return c;
+}
+
+Material readMaterial(in sampler2D tex, in int materialsWidth, in int idx) {
+    idx = idx * 44;
+    Material m = newMaterial();
+    m.specular = readCoating(tex, materialsWidth, idx); // 13
+    m.coat = readCoating(tex, materialsWidth, idx); // 26
+    m.pigment = readCoating(tex, materialsWidth, idx); // 39
+    m.thinWalled = readFloat(tex, materialsWidth, idx++); // 40
+    m.wallThickness = readFloat(tex, materialsWidth, idx++); // 41
+    m.emission = readVec3(tex, materialsWidth, idx); // 44
+    idx += 3;
+    return m;
 }
