@@ -17,7 +17,7 @@ uniform int materialIndicesWidth;
 uniform highp sampler2D materials;
 uniform int materialsWidth;
 
-uniform sampler2D materialTextures[4];
+uniform highp sampler2DArray materialTextures;
 
 const float SKY_DISTANCE = 1e6;
 
@@ -51,7 +51,7 @@ Ray setupRay(vec2 fragCoord, float off) {
 	);
 }
 
-vec4 triPlanar(vec3 nml, sampler2D tex, vec3 p0, vec3 offset, vec3 scale) {
+vec4 triPlanar(vec3 nml, sampler2DArray tex, int index, vec3 p0, vec3 offset, vec3 scale) {
     vec3 p = (p0 + offset) * scale;
     // return texture(tex, toOct(p) * scale.xy, -100.0);
 
@@ -59,22 +59,15 @@ vec4 triPlanar(vec3 nml, sampler2D tex, vec3 p0, vec3 offset, vec3 scale) {
     blending = normalize(max(blending, 0.00001)); // Force weights to sum to 1.0
     float b = (blending.x + blending.y + blending.z);
     blending /= vec3(b, b, b);
-    vec4 xy = texture(tex, p.xy, -100.0);
-    vec4 xz = texture(tex, p.xz, -100.0);
-    vec4 yz = texture(tex, p.yz, -100.0);
+
+    vec4 xy = texture(tex, vec3(p.xy, index));
+    vec4 xz = texture(tex, vec3(p.xz, index));
+    vec4 yz = texture(tex, vec3(p.yz, index));
     return xy * blending.z + xz * blending.y + yz * blending.x;
 }
 
 vec4 sampleIndex(int index, vec3 nml, Ray r) {
-    if (index == 0)
-        return triPlanar(nml, materialTextures[0], r.o, texOffset, texScale);
-    if (index == 1)
-        return triPlanar(nml, materialTextures[1], r.o, texOffset, texScale);
-    if (index == 2)
-        return triPlanar(nml, materialTextures[2], r.o, texOffset, texScale);
-    if (index == 3)
-        return triPlanar(nml, materialTextures[3], r.o, texOffset, texScale);
-    return vec4(0.0);
+    return triPlanar(nml, materialTextures, index, r.o, texOffset, texScale);
 }
 
 vec3 sampleVec3(vec3 value, vec3 nml, Ray r) {
@@ -87,7 +80,8 @@ vec3 sampleVec3(vec3 value, vec3 nml, Ray r) {
 
 vec3 sampleNormal(float texIndex, vec3 nml, Ray r) {
     if (texIndex < 0.0) {
-        return sampleIndex(int(-texIndex - 0.5), nml, r).rgb * 2.0 - 1.0;
+        vec4 v = sampleIndex(int(-texIndex - 0.5), nml, r);
+        return mix(vec3(0.0, 0.0, 1.0), v.rgb * 2.0 - 1.0, v.a);
     } else {
         return vec3(0.0, 0.0, 1.0);
     }
@@ -125,8 +119,13 @@ vec3 getEmission(in Ray r, in int index, in Material material, in vec3 nml) {
     return sampleVec3(material.emission, nml, r);
 }
 
-vec3 getNormal(Ray r, int hitIndex, Coating coating) {
+vec3 getNormal(Ray r, int hitIndex, Coating coating, out vec3 rawNormal) {
     vec3 nml = triNormal(triangles, trianglesWidth, normals, normalsWidth, r.o, hitIndex);
+    rawNormal = nml;
+
+    if (coating.forwardScatter == 0.0) {
+        return nml;
+    }
 
     vec3 basisA[3];
     orthoBasis(basisA, nml);
@@ -140,7 +139,7 @@ bool getSpecular(Ray r, int hitIndex, Material material) {
     return false;
 }
 
-bool traceBounce(inout Ray r, in Plane plane, in vec3 bg0, out Hit hit, out float fresnel, out vec3 nml, out Material material, out vec3 transmit, in bool isPrimaryRay, inout bool specular) {
+bool traceBounce(inout Ray r, in Plane plane, in vec3 bg0, out Hit hit, out float fresnel, out vec3 nml, out vec3 texNml, out Material material, out vec3 transmit, in bool isPrimaryRay, inout bool specular) {
 	hit = setupHit();
 	Hit hit2 = setupHit();
 	// intersectSphere(r, vec3(0.0, 2.5, 0.0), 0.5, hit);
@@ -168,14 +167,14 @@ bool traceBounce(inout Ray r, in Plane plane, in vec3 bg0, out Hit hit, out floa
         coating = material.specular;
     }
 	nml = hit.index >= 0 
-        ? getNormal(r, hit.index, coating)
+        ? getNormal(r, hit.index, coating, texNml)
         : plane.normal;
 
     vec3 fog = (1.0-exp(-hit.distance/40.0)) * bg0;
-	r.light += r.transmit * (getEmission(r, hit.index, material, nml) + fog);
+	r.light += r.transmit * (getEmission(r, hit.index, material, texNml) + fog);
 
 	fresnel = pow(1.0 - abs(dot(r.d, nml)), 5.0);
-	transmit = getTransmit(r, hit.index, coating, nml);
+	transmit = getTransmit(r, hit.index, coating, texNml);
 
 	return true;
 }
@@ -205,11 +204,12 @@ vec3 trace(vec2 fragCoord) {
 	float fresnel;
 	Hit hit;
 	vec3 nml;
+    vec3 texNml;
     vec3 transmit;
     bool specular;
     Material material;
 
-	bool hitScene = traceBounce(r, plane, bg0, hit, fresnel, nml, material, transmit, true, specular);
+	bool hitScene = traceBounce(r, plane, bg0, hit, fresnel, nml, texNml, material, transmit, true, specular);
 
 	if (hitScene) {
 		float fakeBounce = iFrame * 7.0 * 1025.0;
@@ -217,7 +217,7 @@ vec3 trace(vec2 fragCoord) {
 		for (int i = 0; i < 4; i++) {
 			float idx = fragCoord.y * iResolution.x * 16.0 + fragCoord.x * 16.0 + fakeBounce;
 			ivec2 idxv = ivec2(mod(idx / 1024.0, 1024.0), mod(idx, 1024.0));
-            float troughness = sampleFloat(specular ? material.specular.roughness : material.pigment.roughness, nml, r);
+            float troughness = sampleFloat(specular ? material.specular.roughness : material.pigment.roughness, texNml, r);
             float randomDirFactor = (1.0-fresnel*fresnel)*(hit.index >= 0 ? troughness : fract(0.5*dot(r.o, r.o)*10.0));
 
             float bounceCount = 1.0; // (randomDirFactor*0.1 > random(r.o.xy)) ? 2.0 : 1.0;
@@ -257,7 +257,7 @@ vec3 trace(vec2 fragCoord) {
             // }
             r.transmit *= pow(transmit, vec3(bounceCount));
             r.invD = 1.0 / r.d;
-			if (!traceBounce(r, plane, bg0, hit, fresnel, nml, material, transmit, false, specular)) {
+			if (!traceBounce(r, plane, bg0, hit, fresnel, nml, texNml, material, transmit, false, specular)) {
 				light += vec4(r.light + (float(!costVis) * r.transmit) * skybox(r), 1.0);
 				break;
 			}

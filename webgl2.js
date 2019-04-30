@@ -1,13 +1,82 @@
 const mobile = /mobile/i.test(navigator.userAgent);
-const dpr = 1; //(window.devicePixelRatio || 1);
+const dpr = (window.devicePixelRatio || 1);
 
 class Coating {
-    
+
+    constructor(options) {
+        this.color = [0,0,0];
+        this.roughness = 0;
+        this.IOR = 1;
+        this.retroReflectivity = 0.05;
+        this.anisotropy = 0;
+        this.anisotropyAngle = 0;
+        this.density = 0;
+        this.forwardScatter = 0;
+        this.thickness = 0;
+        this.transmission = 0;
+        this.subsurface = 0;
+
+        if (options) {
+            for (let name in options) {
+                this[name] = options[name];
+            }
+        }
+    }
+
+    toArray() {
+        return this.color.concat([
+            this.roughness, this.IOR, this.retroReflectivity,
+            this.anisotropy, this.anisotropyAngle,
+            this.density, this.forwardScatter,
+            this.thickness,
+            this.transmission,
+            this.subsurface
+        ]);
+    }
+
 }
 
 class Material {
 
+    constructor(options) {
+        this.specular = new Coating({color: [1,1,1], IOR: 1.5});
+        this.coat = new Coating();
+        this.volume = new Coating({roughness: 1, IOR: 10});
+        this.thinWall = 0;
+        this.wallThickness = 0;
+        this.emission = [0,0,0];
+        if (options) {
+            for (let name in options) {
+                this[name] = options[name];
+            }
+        }
+    }
+
+    toArray() {
+        return this.specular.toArray().concat(
+            this.coat.toArray(), 
+            this.volume.toArray(),
+            [this.thinWall, this.wallThickness],
+            this.emission
+        );
+    }
+
 }
+
+Material.makeRandom = function() {
+    const m = new Material();
+    m.specular.color = vecToArray(addS(mulS(randomVec3Positive(), 0.05), 0.95));
+    m.coat.color = vecToArray(randomVec3Positive());
+    m.volume.color = vecToArray(addS(mulS(randomVec3Positive(), 0.1), 0.9));
+    // if (random() < 0.01) {
+        // m.emission = vecToArray(addS(mulS(randomVec3Positive(), 4.15), 2.05));
+    // }
+    m.volume.roughness = 0.05;//0.1+0.2*random();
+    m.specular.roughness = 0;//0.1+0.2*random();
+    m.specular.IOR = 1 + random();
+    m.coat.IOR = 1 + random();
+    return m;
+};
 
 class WebGLTracer2 {
     constructor(vg, traceGLSL, blueNoiseTexture, diffuseTexture, metallicTexture, roughnessTexture, normalTexture) {
@@ -56,7 +125,7 @@ class WebGLTracer2 {
         
 
         var specular = [
-            1,0,1, // color
+            1,1,1, // color
             -3,    // roughness
             1.5,   // IOR
             0.05,  // retroreflectiveness
@@ -80,7 +149,7 @@ class WebGLTracer2 {
             0      // subsurface
         ];
         var volume = [
-            -1,1,1, // color
+            -1,0.5,0.5, // color
             -3,   // roughness
             10,    // IOR
             0.05,  // retroreflectiveness
@@ -93,16 +162,60 @@ class WebGLTracer2 {
         ];
         var emission = [0,0,0];
 
+        var triCount = [];
+        for (let i = 0, j = 0; i < arrays.triangles.length; i += 9, j++) {
+            triCount.push(j < 500 ? 0 : j-500);
+        }
+        var materials = specular.concat(coat).concat(volume).concat([0,0]).concat(emission);
+        for (let i = 0; i < triCount.length-501; i++) {
+            Material.makeRandom().toArray().forEach(k => materials.push(k));
+        }
+
+
+
         this.textures = {
             voxelIndex: this.createTexture(new Int16Array(arrays.voxelIndex.buffer), THREE.RedIntegerFormat, THREE.ShortType),
             triIndices: this.createTexture(arrays.triIndices, THREE.RedIntegerFormat, THREE.UnsignedIntType),
             triangles: this.createTexture(arrays.triangles, THREE.RedFormat, THREE.FloatType),
             normals: this.createTexture(arrays.normals, THREE.RedFormat, THREE.FloatType),
-            materialIndices: this.createTexture(arrays.triIndices.map(i => 0), THREE.RedIntegerFormat, THREE.UnsignedIntType),
+            materialIndices: this.createTexture(new Uint32Array(triCount), THREE.RedIntegerFormat, THREE.UnsignedIntType),
             materials: this.createTexture(new Float32Array(
-                specular.concat(coat).concat(volume).concat([0,0]).concat(emission)
+                materials
+                // specular.concat(coat).concat(volume).concat([0,0]).concat(emission)
             ), THREE.RedFormat, THREE.FloatType)
         };
+
+        var materialImages = [
+            this.normalTexture.image,
+            this.roughnessTexture.image,
+            this.metallicTexture.image,
+            this.diffuseTexture.image
+        ];
+
+        var tcanvas = document.createElement('canvas');
+        var tctx = tcanvas.getContext('2d');
+        var texWidth = materialImages[0].width;
+        var texHeight = materialImages[0].height;
+        var texDepth = materialImages.length;
+        tcanvas.width = texWidth;
+        tcanvas.height = texHeight * texDepth;
+        tctx.translate(0, tcanvas.height);
+        tctx.scale(1, -1);
+        materialImages.forEach((img, i) => {
+            tctx.drawImage(img, 0, i * texHeight);
+        });
+        var imageData = tctx.getImageData(0, 0, tcanvas.width, tcanvas.height);
+
+        tcanvas.setAttribute('style', 'right: 0; z-index: 10; left: auto; width: auto !important;');
+        // document.body.appendChild(tcanvas);
+
+        this.materialTextures = new THREE.DataTexture3D(
+            new Uint8Array(imageData.data.buffer), texWidth, texHeight, texDepth
+        );
+        this.materialTextures.wrapS = THREE.RepeatWrapping;
+        this.materialTextures.wrapT = THREE.RepeatWrapping;
+        this.materialTextures.wrapR = THREE.RepeatWrapping;
+        this.materialTextures.needsUpdate = true;
 
         this.renderer = new THREE.WebGLRenderer({ canvas, context });
         this.renderer.setSize(window.innerWidth*dpr, window.innerHeight*dpr);
@@ -158,7 +271,7 @@ class WebGLTracer2 {
                 materialsWidth: { value: this.textures.materials.image.width },
 
                 materialTextures: {
-                    value: [this.diffuseTexture, this.metallicTexture, this.roughnessTexture, this.normalTexture]
+                    value: this.materialTextures
                 },
 
                 varianceTexture: { value: this.varianceRenderTarget.texture },
@@ -480,7 +593,7 @@ class WebGLTracer2 {
             }
 
             void main() {
-                const float radius = 5.0;
+                const float radius = 1.0;
                 
                 vec4 accum = texelFetch(tex, ivec2(gl_FragCoord.xy), 0);
                 accum.rgb /= accum.a;
@@ -490,7 +603,7 @@ class WebGLTracer2 {
                         if (x == 0.0 && y == 0.0) {
                             continue;
                         }
-                        float d = pow(length(vec2(x,y)/2.0), 4.0);
+                        float d = pow(length(vec2(x,y)/2.0), 6.0);
                         vec4 c = texelFetch(tex, ivec2(gl_FragCoord.xy + vec2(x,y)), 0);
                         c.rgb /= c.a;
                         if ((c.r+c.g+c.b)/3.0 > startBrightness) {
@@ -868,10 +981,15 @@ function LoadOBJ(path) {
     console.time('Load to first frame');
 
     var tracer = false;
+    var voxelGrid = false;
 
+    var loadCount = 0;
     const onLoad = function() {
-        if (tracer) {
-            tracer.render();
+        if (loadCount === 4) {
+            if (!voxelGrid) {
+                setTimeout(onLoad, 10);
+            }
+            tracer = new WebGLTracer2(voxelGrid, shaders.join('\n'), blueNoiseTexture, diffuseTexture, metallicTexture, roughnessTexture, normalTexture);
 
             const tick = () => {
                 tracer.render();
@@ -881,23 +999,23 @@ function LoadOBJ(path) {
         
             document.body.append(tracer.renderer.domElement);
         } else {
-            setTimeout(onLoad, 10);
+            loadCount++;
         }
     };
 
     const blueNoiseTexture = new THREE.TextureLoader().load('blue_noise.png', onLoad);
     blueNoiseTexture.wrapS = THREE.RepeatWrapping;
     blueNoiseTexture.wrapT = THREE.RepeatWrapping;
-    const diffuseTexture = new THREE.TextureLoader().load('Metal_basecolor.png');
+    const diffuseTexture = new THREE.TextureLoader().load('Metal_basecolor.png', onLoad);
     diffuseTexture.wrapS = THREE.RepeatWrapping;
     diffuseTexture.wrapT = THREE.RepeatWrapping;
-    const metallicTexture = new THREE.TextureLoader().load('Metal_metallic.png');
+    const metallicTexture = new THREE.TextureLoader().load('Metal_metallic.png', onLoad);
     metallicTexture.wrapS = THREE.RepeatWrapping;
     metallicTexture.wrapT = THREE.RepeatWrapping;
-    const normalTexture = new THREE.TextureLoader().load('Metal_normal.png');
+    const normalTexture = new THREE.TextureLoader().load('Metal_normal.png', onLoad);
     normalTexture.wrapS = THREE.RepeatWrapping;
     normalTexture.wrapT = THREE.RepeatWrapping;
-    const roughnessTexture = new THREE.TextureLoader().load('Metal_roughness.png');
+    const roughnessTexture = new THREE.TextureLoader().load('Metal_roughness.png', onLoad);
     roughnessTexture.wrapS = THREE.RepeatWrapping;
     roughnessTexture.wrapT = THREE.RepeatWrapping;
 
@@ -972,12 +1090,11 @@ function LoadOBJ(path) {
     console.timeEnd('OBJ munging');
 
     console.time('Create VoxelGrid');
-    const voxelGrid = new VoxelGrid4(bunnyTris.bbox.min, vec3(m), grid, 0);
-    voxelGrid.addTriangles(bunnyTris);
+    const vg  = new VoxelGrid4(bunnyTris.bbox.min, vec3(m), grid, 0);
+    vg.addTriangles(bunnyTris);
+    voxelGrid = vg;
     console.timeEnd('Create VoxelGrid');
 
-
-    tracer = new WebGLTracer2(voxelGrid, shaders.join('\n'), blueNoiseTexture, diffuseTexture, metallicTexture, roughnessTexture, normalTexture);
 
     
     window.roughness.oninput = window.apertureSize.oninput = function(ev) {
