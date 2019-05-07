@@ -1,5 +1,5 @@
 const mobile = /mobile/i.test(navigator.userAgent);
-const dpr = (window.devicePixelRatio || 1);
+const dpr = 1;//(window.devicePixelRatio || 1);
 
 class Coating {
 
@@ -7,11 +7,11 @@ class Coating {
         this.color = [0,0,0];
         this.roughness = 0;
         this.IOR = 1;
-        this.retroReflectivity = 0.05;
+        this.retroReflectivity = 0.0;
         this.anisotropy = 0;
         this.anisotropyAngle = 0;
-        this.density = 0;
-        this.forwardScatter = 0;
+        this.density = 1;
+        this.forwardScatter = 0.5;
         this.thickness = 0;
         this.transmission = 0;
         this.subsurface = 0;
@@ -65,16 +65,17 @@ class Material {
 
 Material.makeRandom = function() {
     const m = new Material();
-    m.specular.color = vecToArray(addS(mulS(randomVec3Positive(), 0.05), 0.95));
-    m.coat.color = vecToArray(randomVec3Positive());
-    m.volume.color = vecToArray(addS(mulS(randomVec3Positive(), 0.1), 0.9));
+    m.specular.color = vecToArray(vec3(1.0)); //vecToArray(addS(mulS(randomVec3Positive(), 0.05), 0.95));
+    m.coat.color = vecToArray(vec3(0.95, 0.1, 0.05)); //vecToArray(randomVec3Positive());
+    m.volume.color = vecToArray(vec3(0.95, 0.1, 0.05)); //vecToArray(addS(mulS(randomVec3Positive(), 0.8), 0.1));
     // if (random() < 0.01) {
-        // m.emission = vecToArray(addS(mulS(randomVec3Positive(), 4.15), 2.05));
+    //     m.emission = vecToArray(addS(mulS(randomVec3Positive(), 40.15), 2.05));
     // }
-    m.volume.roughness = 0.05;//0.1+0.2*random();
-    m.specular.roughness = 0;//0.1+0.2*random();
-    m.specular.IOR = 1 + random();
-    m.coat.IOR = 1 + random();
+    m.volume.roughness = 0.05; //random();
+    m.specular.roughness = 0.0; //random();
+    m.specular.IOR = 1.5; // + random();
+    m.volume.density = 0.5;
+    m.coat.IOR = 1.5; // + random();
     return m;
 };
 
@@ -164,12 +165,12 @@ class WebGLTracer2 {
 
         var triCount = [];
         for (let i = 0, j = 0; i < arrays.triangles.length; i += 9, j++) {
-            triCount.push(j < 500 ? 0 : j-500);
+            triCount.push(0);
         }
-        var materials = specular.concat(coat).concat(volume).concat([0,0]).concat(emission);
-        for (let i = 0; i < triCount.length-501; i++) {
+        var materials = []; //specular.concat(coat).concat(volume).concat([0,0]).concat(emission);
+        // for (let i = 0; i < triCount.length; i++) {
             Material.makeRandom().toArray().forEach(k => materials.push(k));
-        }
+        // }
 
 
 
@@ -287,7 +288,7 @@ class WebGLTracer2 {
                 cameraApertureSize: { value: camera.apertureSize },
                 cameraInverseMatrix: { value: camera.inverseMatrix },
                 cameraMatrixWorld: { value: camera.matrixWorld },
-                deviceEpsilon: {value: mobile ? 0.01 : 0.0001},
+                deviceEpsilon: {value: mobile ? 0.01 : 0.001},
                 deviceEpsilonTrace: {value: mobile ? 0.05 : 0.01},
                 roughness: {value: 0.2},
                 costVis: {value: false},
@@ -982,12 +983,14 @@ function LoadOBJ(path) {
 
     var tracer = false;
     var voxelGrid = false;
+    var shaders = false;
 
     var loadCount = 0;
     const onLoad = function() {
         if (loadCount === 4) {
-            if (!voxelGrid) {
+            if (!voxelGrid || !shaders) {
                 setTimeout(onLoad, 10);
+                return;
             }
             tracer = new WebGLTracer2(voxelGrid, shaders.join('\n'), blueNoiseTexture, diffuseTexture, metallicTexture, roughnessTexture, normalTexture);
 
@@ -1024,7 +1027,8 @@ function LoadOBJ(path) {
     const shaderRes = shaderNames.map(name => fetch(`lib/${name}.glsl`));
     const bunny = await ObjParse.load('bunny.obj');
 
-    const shaders = await Promise.all(shaderRes.map(async res => (await res).text()));
+    const shadersT = await Promise.all(shaderRes.map(async res => (await res).text()));
+    shaders = shadersT;
 
     console.time('OBJ munging');
     var verts = bunny.vertices;
@@ -1046,7 +1050,7 @@ function LoadOBJ(path) {
         if (z > bbox.max.z) bbox.max.z = z;
     }
 
-    var scale = 2.0 / (bbox.max.y - bbox.min.y);
+    var scale = 2.5 / max(bbox.max.z - bbox.min.z, bbox.max.x - bbox.min.x);
     var xOffset = -(bbox.max.x+bbox.min.x)/2;
     var zOffset = -(bbox.max.z+bbox.min.z)/2;
     var yOffset = -bbox.min.y + 0.001;

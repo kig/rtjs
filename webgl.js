@@ -63,7 +63,7 @@ class WebGLTracer {
                 cameraInverseMatrix: { value: camera.inverseMatrix },
                 cameraMatrixWorld: { value: camera.matrixWorld },
                 deviceEpsilon: {value: mobile ? 0.01 : 0.0001},
-                deviceEpsilonTrace: {value: mobile ? 0.05 : 0.01},
+                deviceEpsilonTrace: {value: mobile ? 0.05 : 0.001},
                 roughness: {value: 0.2},
                 costVis: {value: false},
                 aaSize: {value: 2.0},
@@ -258,7 +258,7 @@ class WebGLTracer {
     }
 
     render() {
-        if (this.controls.changed || this.frame < 100) {
+        if (this.controls.changed || this.frame < 1000) {
 
             if (this.controls.changed) {
                 this.frame = 0;
@@ -399,7 +399,7 @@ function LoadOBJ(path) {
     const shaderNames = ['primitives', 'voxelgrid', 'voxelgrid_superflat', 'trace'];
 
     const shaderRes = shaderNames.map(name => fetch(`lib/${name}.glsl`));
-    const bunny = await ObjParse.load('polyhymenia-1.obj');
+    const bunny = await ObjParse.load('model2.obj');
 
     const shaders = await Promise.all(shaderRes.map(async res => (await res).text()));
 
@@ -456,7 +456,7 @@ function LoadOBJ(path) {
     var size = sub(bunnyTris.bbox.max, bunnyTris.bbox.min);
     var m = Math.max(size.x, size.y, size.z);
     // decent for dragon [32, 4, 2, 2] and [16,4,4,2] and [32,2,2,2]
-    var grid = [32,4,2,2];
+    var grid = [32,4];
     if (bunnyTris.length < 10000) {
         // Use low-res grid
         // Fastest JS exec: [32]

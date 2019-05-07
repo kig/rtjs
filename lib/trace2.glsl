@@ -97,26 +97,17 @@ float sampleFloat(float value, vec3 nml, Ray r) {
 
 
 Material getMaterial(Ray r, int index) {
-    int materialIndex = 0;
-    if (index >= 0) {
-        materialIndex = int(readMaterialIndex(materialIndices, materialIndicesWidth, index));
-    }
+    int materialIndex = int(readMaterialIndex(materialIndices, materialIndicesWidth, index));
     return readMaterial(materials, materialsWidth, materialIndex);
 }
 
 vec3 getTransmit(in Ray r, in int index, in Coating coating, in vec3 nml) {
-	if (index < 0) {
-		return vec3(0.05);
-	} else {
-        return sampleVec3(coating.color, nml, r);
-	}
+    return sampleVec3(coating.color, nml, r);
 }
 
 vec3 getEmission(in Ray r, in int index, in Material material, in vec3 nml) {
-    if (index < 0) {
-        return mix(vec3(0.0), vec3(10.0), float(length(r.o) > 1.2) * clamp(1.0 - (length(r.o) - 1.2) / 0.4, 0.0, 1.0) );
-    }
-    return sampleVec3(material.emission, nml, r);
+    return abs(r.o.y - 0.01) < 0.0025 ? vec3(20.0, 10.0, 3.0) : vec3(0.0);
+    //return sampleVec3(material.emission, nml, r);
 }
 
 vec3 getNormal(Ray r, int hitIndex, Coating coating, out vec3 rawNormal) {
@@ -135,19 +126,47 @@ vec3 getNormal(Ray r, int hitIndex, Coating coating, out vec3 rawNormal) {
     );
 }
 
-bool getSpecular(Ray r, int hitIndex, Material material) {
+float fresnelP(vec3 dir, vec3 nml, float currentIOR, float nextIOR) {
+    dir = normalize(dir);
+    nml = normalize(nml);
+    vec3 refracted = refract(dir, nml, currentIOR / nextIOR);
+    float ci = dot(dir, nml);
+    float ct = dot(nml, refracted);
+    float Rs = (currentIOR * ci - nextIOR * ct) / (currentIOR * ci + nextIOR * ct);
+    // float Rt = (currentIOR * ct - nextIOR * ci) / (currentIOR * ct + nextIOR * ci);
+    Rs *= Rs;
+    // Rt *= Rt;
+    return Rs; //0.5 * (Rs + Rt);
+}
+
+bool getSpecular(Ray r, int hitIndex, vec3 nml, Material material, out float fresnel, out Coating coating) {
+    float rn = random(r.d.xz);
+    // float fresnelCoat = fresnelP(r.d, nml, r.IOR, material.coat.IOR);
+    // if (rn < fresnelCoat) {
+    //     coating = material.coat;
+    //     fresnel = fresnelCoat;
+    //     return true;
+    // }
+    float currentIOR = 1.0;
+    float nextIOR = material.specular.IOR;
+    if (dot(r.d, nml) > 0.0) {
+        nextIOR = 1.0;
+        currentIOR = material.specular.IOR;
+        nml = -nml;
+    }
+    float fresnelSpecular = fresnelP(r.d, nml, currentIOR, nextIOR);
+    fresnel = fresnelSpecular;
+    if (rn < fresnelSpecular) {
+        coating = material.specular;
+        return true;
+    }
+    coating = material.pigment;
     return false;
 }
 
-bool traceBounce(inout Ray r, in Plane plane, in vec3 bg0, out Hit hit, out float fresnel, out vec3 nml, out vec3 texNml, out Material material, out vec3 transmit, in bool isPrimaryRay, inout bool specular) {
+bool traceBounce(inout Ray r, in Plane plane, in vec3 bg0, out Hit hit, out float fresnel, out vec3 nml, out vec3 texNml, out Material material, out Coating coating, out vec3 transmit, in bool isPrimaryRay, inout bool specular) {
 	hit = setupHit();
-	Hit hit2 = setupHit();
-	// intersectSphere(r, vec3(0.0, 2.5, 0.0), 0.5, hit);
 	intersectGrid(r, hit);
-	intersectPlane(r, plane, hit2);
-	if (hit2.distance < hit.distance) {
-		hit = hit2;
-	}
 	if (hit.distance >= SKY_DISTANCE) {
 		return false;
 	}
@@ -161,29 +180,23 @@ bool traceBounce(inout Ray r, in Plane plane, in vec3 bg0, out Hit hit, out floa
 	r.pathLength += hit.distance;
 
     material = getMaterial(r, hit.index);
-    specular = getSpecular(r, hit.index, material);
-    Coating coating = material.pigment;
-    if (specular) {
-        coating = material.specular;
-    }
-	nml = hit.index >= 0 
-        ? getNormal(r, hit.index, coating, texNml)
-        : plane.normal;
+	nml = getNormal(r, hit.index, material.specular, texNml);
 
     vec3 fog = (1.0-exp(-hit.distance/40.0)) * bg0;
 	r.light += r.transmit * (getEmission(r, hit.index, material, texNml) + fog);
 
-	fresnel = pow(1.0 - abs(dot(r.d, nml)), 5.0);
+    specular = getSpecular(r, hit.index, nml, material, fresnel, coating);
+
 	transmit = getTransmit(r, hit.index, coating, texNml);
 
 	return true;
 }
 
 vec3 skybox(in Ray r) {
-    vec3 bg = vec3(0.6+clamp(-r.d.y, 0.0, 1.0), 0.7, 0.8+(0.4*r.d.x) * abs(r.d.z));
+    vec3 bg = clamp(dot(r.d, vec3(0.0, 1.0, 0.0)), 0.0, 1.0) * vec3(0.3, 0.6, 1.0) + vec3(1.0);
     bg += vec3(10.0, 9.0, 7.0) * pow(clamp(dot(r.d, normalize(vec3(6.0, 10.0, 8.0))), 0.0, 1.0), 16.0);
     bg += vec3(10.0, 8.0, 6.0) * 4.0 * pow(clamp(dot(r.d, normalize(vec3(6.0, 10.0, 8.0))), 0.0, 1.0), 64.0);
-    bg += 0.5 * 5.5*vec3(0.7, 0.8, 1.0) * abs(1.0+r.d.y);
+    bg += 0.5 * 5.5*vec3(1.0, 0.8, 0.7) * abs(1.0+r.d.y);
     return bg;
 }
 
@@ -204,61 +217,74 @@ vec3 trace(vec2 fragCoord) {
 	float fresnel;
 	Hit hit;
 	vec3 nml;
+    vec3 lastNml;
     vec3 texNml;
     vec3 transmit;
     bool specular;
     Material material;
+    Coating coating;
 
-	bool hitScene = traceBounce(r, plane, bg0, hit, fresnel, nml, texNml, material, transmit, true, specular);
+	bool hitScene = traceBounce(r, plane, bg0, hit, fresnel, nml, texNml, material, coating, transmit, true, specular);
 
 	if (hitScene) {
-		float fakeBounce = iFrame * 7.0 * 1025.0;
-        bool sss = false;
-		for (int i = 0; i < 4; i++) {
+		float fakeBounce = iFrame * 1025.0;
+		for (int i = 0; i < 15; i++) {
 			float idx = fragCoord.y * iResolution.x * 16.0 + fragCoord.x * 16.0 + fakeBounce;
 			ivec2 idxv = ivec2(mod(idx / 1024.0, 1024.0), mod(idx, 1024.0));
-            float troughness = sampleFloat(specular ? material.specular.roughness : material.pigment.roughness, texNml, r);
-            float randomDirFactor = (1.0-fresnel*fresnel)*(hit.index >= 0 ? troughness : fract(0.5*dot(r.o, r.o)*10.0));
+            float troughness = sampleFloat(coating.roughness, texNml, r);
+            float randomDirFactor = (1.0-fresnel*fresnel) * troughness;
 
-            float bounceCount = 1.0; // (randomDirFactor*0.1 > random(r.o.xy)) ? 2.0 : 1.0;
+            // float bounceCount = (randomDirFactor*0.1 > random(r.o.xy)) ? 2.0 : 1.0;
 
-            // vec3 retroReflectiveness = hit.index >= 0
-            //     ? vec3(float((random(r.d.xz) < 0.1 && bounceCount > 1.0) || (mod(length(r.o), 0.1) < 0.0 && random(r.o.yz) < (0.75 - 0.75 * fresnel))))
-            //     : vec3(0.0);
+            // vec3 retroReflectiveness = vec3(float((random(r.d.xz) < 0.1 && bounceCount > 1.0) || (mod(length(r.o), 0.1) < 0.0 && random(r.o.yz) < (0.75 - 0.75 * fresnel))));
 
             vec3 surfaceRay;
 
             float inside = sign(dot(r.d, nml));
             nml = nml * -inside;
 
-            // float scatterDistance = pow(random(r.d.xz), 0.5);
+            bool scattered = false;
+            float rnd = 0.0;
 
-            // if (hit.index >= 0 && inside > 0.0 && hit.distance > scatterDistance && !sss) {
-            //     r.o -= r.d * (hit.distance - scatterDistance);
-            //     r.d = normalize(-r.d * 0.8 + randomVec3(idxv));
-            //     bounceCount = 0.5;
-            //     sss = true;
-            // } else {
-                sss = false;
+            float scatterProbability = 0.0;
 
-                // if (!specular && hit.index >= 0) {
-                //     surfaceRay = refract(r.d, nml, inside < 0.0 ? 1.0/1.84 : 1.84/1.0);
-                //     nml = -nml;
-                // } else {
+            if (inside > 0.0 && material.pigment.density > 0.0) {
+                scatterProbability = pow(material.pigment.density, 1.0 / hit.distance);
+                rnd = random(r.o.xy);
+                scattered = rnd < scatterProbability;
+            }
+
+            if (scattered) {
+                float scatterDistance = (1.0 - pow(random(r.o.zx), (1.0-scatterProbability))) * hit.distance;
+                r.o -= r.d * (hit.distance - scatterDistance);
+                r.d = normalize(mix(
+                    normalize(reflect(r.d, lastNml)),
+                    normalize(-r.d * (1.0 - material.pigment.forwardScatter) + randomVec3(idxv))
+                , min(10.0*scatterDistance, 1.0)));
+                r.transmit *= pow(transmit, vec3(exp(-material.pigment.density * scatterDistance))); // pow(transmit, vec3(bounceCount));
+            } else {
+
+                if (!specular && material.pigment.density < 1.0) {
+                    surfaceRay = refract(r.d, nml, inside < 0.0 ? (1.0 / material.specular.IOR) : (material.specular.IOR / 1.0));
+                    nml = -nml;
+                    r.IOR = inside < 0.0 ? material.specular.IOR : 1.0;
+                    // r.transmit *= transmit;
+                } else {
                     surfaceRay = reflect(r.d, nml);
-                // }
+                    r.transmit *= transmit; // pow(transmit, vec3(bounceCount));
+                }
 
                 r.d = normalize(mix(
                     surfaceRay, 
                     nml + randomVec3(idxv),
                     randomDirFactor
-                )); //, -r.d + randomVec3(idxv), retroReflectiveness)); // + (abs(dot(r.d, nml)) * roughness) * randomVec3(5.0+r.o+r.d));
+                )); //, -r.d + 0.1*randomVec3(idxv), retroReflectiveness));
                 r.o = r.o + nml * epsilon;
-            // }
-            r.transmit *= pow(transmit, vec3(bounceCount));
+                lastNml = nml;
+            }
             r.invD = 1.0 / r.d;
-			if (!traceBounce(r, plane, bg0, hit, fresnel, nml, texNml, material, transmit, false, specular)) {
-				light += vec4(r.light + (float(!costVis) * r.transmit) * skybox(r), 1.0);
+			if (!traceBounce(r, plane, bg0, hit, fresnel, nml, texNml, material, coating, transmit, false, specular)) {
+				light += vec4(r.light + r.transmit * skybox(r), 1.0);
 				break;
 			}
             fakeBounce++;
