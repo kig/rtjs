@@ -129,7 +129,9 @@ var trace = function(rays, raysLength, scene, console) {
 var cachedAcceleration = {};
 var getAcceleration = function(bunnyTris, scene, bvhWidth, acceleration, rays, cache, console) {
 	if (cache && cachedAcceleration[acceleration]) {
-		return cachedAcceleration[acceleration];
+		if (acceleration !== 'BVH' || cachedAcceleration.BVH.nodeSize === bvhWidth) {
+			return cachedAcceleration[acceleration];
+		}
 	}
 
 	if (acceleration === 'PathCache') {
@@ -230,8 +232,13 @@ var getAcceleration = function(bunnyTris, scene, bvhWidth, acceleration, rays, c
 		window.console.time("BeamSphere init");
 		var size = sub(bunnyTris.bbox.max, bunnyTris.bbox.min);
 		var mid = add(bunnyTris.bbox.min, mulS(size, 0.5));
-		var radius = length(size) / 2;
-		var accel = new BeamSphere(mid, radius, 5);
+		var radius = 0;
+		bunnyTris.forEach(tri => {
+			radius = max(radius, length(sub(mid, tri._vertices[0])));
+			radius = max(radius, length(sub(mid, tri._vertices[1])));
+			radius = max(radius, length(sub(mid, tri._vertices[2])));
+		});
+		var accel = new BeamSphere(mid, radius, 16);
 		window.console.timeEnd("BeamSphere init");
 
 		for (var i = 0; i < bunnyTris.length; i++) {
@@ -264,6 +271,7 @@ var getAcceleration = function(bunnyTris, scene, bvhWidth, acceleration, rays, c
 		console.log("Built BVH, width", bvhWidth, "size", accel.subTreeSize);
 
 		console.timeEnd("BVH build");
+		window.console.log(accel);
 
 	}
 	if (cache) {

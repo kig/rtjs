@@ -1,5 +1,5 @@
 const mobile = /mobile/i.test(navigator.userAgent);
-const dpr = 1;//(window.devicePixelRatio || 1);
+const dpr = (window.devicePixelRatio || 1);
 
 class Coating {
 
@@ -66,15 +66,15 @@ class Material {
 Material.makeRandom = function() {
     const m = new Material();
     m.specular.color = vecToArray(vec3(1.0)); //vecToArray(addS(mulS(randomVec3Positive(), 0.05), 0.95));
-    m.coat.color = vecToArray(vec3(0.95, 0.1, 0.05)); //vecToArray(randomVec3Positive());
-    m.volume.color = vecToArray(vec3(0.95, 0.1, 0.05)); //vecToArray(addS(mulS(randomVec3Positive(), 0.8), 0.1));
+    m.coat.color = vecToArray(vec3(0.85, 0.51, 0.35)); //vecToArray(randomVec3Positive());
+    m.volume.color = vecToArray(vec3(0.45, 0.71, 0.85)); //vecToArray(addS(mulS(randomVec3Positive(), 0.8), 0.1));
     // if (random() < 0.01) {
     //     m.emission = vecToArray(addS(mulS(randomVec3Positive(), 40.15), 2.05));
     // }
-    m.volume.roughness = 0.05; //random();
-    m.specular.roughness = 0.0; //random();
+    m.volume.roughness = 0.95; //random();
+    m.specular.roughness = 0.05; //random();
     m.specular.IOR = 1.5; // + random();
-    m.volume.density = 0.5;
+    m.volume.density = 1;
     m.coat.IOR = 1.5; // + random();
     return m;
 };
@@ -288,6 +288,9 @@ class WebGLTracer2 {
                 cameraApertureSize: { value: camera.apertureSize },
                 cameraInverseMatrix: { value: camera.inverseMatrix },
                 cameraMatrixWorld: { value: camera.matrixWorld },
+                previousCameraInverseMatrix: { value: new THREE.Matrix4() },
+                previousCameraMatrixWorld: { value: new THREE.Matrix4() },
+                previousCameraPosition: { value: new THREE.Vector3() },
                 deviceEpsilon: {value: mobile ? 0.01 : 0.001},
                 deviceEpsilonTrace: {value: mobile ? 0.05 : 0.01},
                 roughness: {value: 0.2},
@@ -314,6 +317,9 @@ class WebGLTracer2 {
             precision highp int;
            
             uniform vec3 cameraPosition;
+            uniform vec3 previousCameraPosition;
+            uniform mat4 previousCameraMatrixWorld;
+            uniform mat4 previousCameraInverseMatrix;
             uniform sampler2D varianceTexture;
             
             ${traceGLSL}
@@ -666,6 +672,7 @@ class WebGLTracer2 {
                 bool converged = varianceMetrics.z > 0.0;
                 bool convergedVariance = varianceMetrics.w > 0.0;
 
+                /*
                 if (errorLum > 0.01 || length(FragColor.rgb) < 0.4) {
                     vec3 v[9];
                     v[0] = toGamma(texelFetch(tex, ivec2(gl_FragCoord.xy) + ivec2(0, -1), 0));
@@ -704,6 +711,7 @@ class WebGLTracer2 {
                         );
                     }
                 }
+                */
 
                 if (showConverged) {
                     if (( ((errorLum < 0.0001)) && (converged || convergedVariance || (iFrame >= 2.0 && (errorLum < 0.01 || totalVariance < 0.01))) )) {
@@ -782,10 +790,13 @@ class WebGLTracer2 {
     }
 
     render() {
-        if (this.controls.changed || this.frame < 250) {
+        if (this.controls.changed || this.frame < 1) {
 
             if (this.controls.focusPoint) {
-                const ray = this.setupRay(this.controls.focusPoint);
+                const ray = this.setupRay({
+                    x: this.controls.focusPoint.x * dpr,
+                    y: this.controls.focusPoint.y * dpr
+                });
                 this.controls.focusPoint = null;
                 const hit = this.voxelGrid.intersect(ray);
                 if (hit && hit.obj) {
@@ -799,6 +810,9 @@ class WebGLTracer2 {
             this.frameStartTime = Date.now();
 
             const camera = this.camera;
+            this.material.uniforms.previousCameraMatrixWorld.value.copy(camera.matrixWorld);
+            this.material.uniforms.previousCameraPosition.value.copy(camera.position);
+            this.material.uniforms.previousCameraInverseMatrix.value.copy(camera.inverseMatrix);
             camera.lookAt(camera.target);
             camera.updateProjectionMatrix();
             camera.updateMatrixWorld();
@@ -838,30 +852,18 @@ class WebGLTracer2 {
 
             if (controlsActive) {
                 this.rayBudget = 1;
-                if (this.renderer.domElement.width !== window.innerWidth ||
-                    this.renderer.domElement.height !== window.innerHeight
-                ) {
-                    this.rayBudget = 1;
-                    this.frame = 0;
-                    this.renderer.setSize(window.innerWidth, window.innerHeight);
-                    this.renderTarget.setSize(window.innerWidth, window.innerHeight);
-                    this.accumRenderTargetA.setSize(window.innerWidth, window.innerHeight);
-                    this.accumRenderTargetB.setSize(window.innerWidth, window.innerHeight);
-                    this.varianceRenderTarget.setSize(window.innerWidth, window.innerHeight);
-                }
-                dprValue = 1;
-            } else {
-                if (this.renderer.domElement.width !== window.innerWidth*dpr ||
-                    this.renderer.domElement.height !== window.innerHeight*dpr
-                ) {
-                    this.rayBudget /= dpr * dpr;
-                    this.frame = 0;
-                    this.renderer.setSize(window.innerWidth*dpr, window.innerHeight*dpr);
-                    this.renderTarget.setSize(window.innerWidth*dpr, window.innerHeight*dpr);
-                    this.accumRenderTargetA.setSize(window.innerWidth*dpr, window.innerHeight*dpr);
-                    this.accumRenderTargetB.setSize(window.innerWidth*dpr, window.innerHeight*dpr);
-                    this.varianceRenderTarget.setSize(window.innerWidth*dpr, window.innerHeight*dpr);
-                }
+            }
+
+            if (this.renderer.domElement.width !== window.innerWidth*dpr ||
+                this.renderer.domElement.height !== window.innerHeight*dpr
+            ) {
+                this.rayBudget /= (dpr * dpr);
+                this.frame = 0;
+                this.renderer.setSize(window.innerWidth*dpr, window.innerHeight*dpr);
+                this.renderTarget.setSize(window.innerWidth*dpr, window.innerHeight*dpr);
+                this.accumRenderTargetA.setSize(window.innerWidth*dpr, window.innerHeight*dpr);
+                this.accumRenderTargetB.setSize(window.innerWidth*dpr, window.innerHeight*dpr);
+                this.varianceRenderTarget.setSize(window.innerWidth*dpr, window.innerHeight*dpr);
             }
 
             this.material.uniforms.stripes.value = !!window.stripes.checked;
@@ -895,55 +897,55 @@ class WebGLTracer2 {
             this.varianceMaterial.uniforms.tex.value = this.accumRenderTargetB.texture;
             this.renderer.render(this.varianceMesh, camera, this.varianceRenderTarget);
 
-            if (this.frame === 1) {
-                // Biased start:
-                //
-                // 1) Gaussian blur the light
-                // 2) Use blurred value as starting bias for integration 
-                //    with weight / kernel width determined by roughness / edginess
-                //    Rougher => more variance => more weight for blur
-                //    Edgier => lower blur kernel width
+            // if (this.frame === 1) {
+            //     // Biased start:
+            //     //
+            //     // 1) Gaussian blur the light
+            //     // 2) Use blurred value as starting bias for integration 
+            //     //    with weight / kernel width determined by roughness / edginess
+            //     //    Rougher => more variance => more weight for blur
+            //     //    Edgier => lower blur kernel width
 
-                this.material.uniforms.rayBudget.value = 1;
+            //     this.material.uniforms.rayBudget.value = 1;
 
-                this.material.uniforms.iFrame.value = this.frame;
-                this.accumMaterial.uniforms.iFrame.value = this.frame;
-                this.varianceMaterial.uniforms.iFrame.value = this.frame;
+            //     this.material.uniforms.iFrame.value = this.frame;
+            //     this.accumMaterial.uniforms.iFrame.value = this.frame;
+            //     this.varianceMaterial.uniforms.iFrame.value = this.frame;
 
-                // Swap render targets for accumulator
-                tmp = this.accumRenderTargetA;
-                this.accumRenderTargetA = this.accumRenderTargetB;
-                this.accumRenderTargetB = tmp;
+            //     // Swap render targets for accumulator
+            //     tmp = this.accumRenderTargetA;
+            //     this.accumRenderTargetA = this.accumRenderTargetB;
+            //     this.accumRenderTargetB = tmp;
 
-                this.renderer.render(this.scene, camera, this.renderTarget);
-                this.accumMaterial.uniforms.accumTex.value = this.accumRenderTargetA.texture;
-                this.renderer.render(this.accumMesh, camera, this.accumRenderTargetB);
-                this.frame++;
+            //     this.renderer.render(this.scene, camera, this.renderTarget);
+            //     this.accumMaterial.uniforms.accumTex.value = this.accumRenderTargetA.texture;
+            //     this.renderer.render(this.accumMesh, camera, this.accumRenderTargetB);
+            //     this.frame++;
 
-                this.varianceMaterial.uniforms.previousTex.value = this.accumRenderTargetA.texture;
-                this.varianceMaterial.uniforms.tex.value = this.accumRenderTargetB.texture;
-                this.renderer.render(this.varianceMesh, camera, this.varianceRenderTarget);
+            //     this.varianceMaterial.uniforms.previousTex.value = this.accumRenderTargetA.texture;
+            //     this.varianceMaterial.uniforms.tex.value = this.accumRenderTargetB.texture;
+            //     this.renderer.render(this.varianceMesh, camera, this.varianceRenderTarget);
 
-                this.material.uniforms.rayBudget.value = 1;
+            //     this.material.uniforms.rayBudget.value = 1;
 
-                this.material.uniforms.iFrame.value = this.frame;
-                this.accumMaterial.uniforms.iFrame.value = this.frame;
-                this.varianceMaterial.uniforms.iFrame.value = this.frame;
+            //     this.material.uniforms.iFrame.value = this.frame;
+            //     this.accumMaterial.uniforms.iFrame.value = this.frame;
+            //     this.varianceMaterial.uniforms.iFrame.value = this.frame;
 
-                // Swap render targets for accumulator
-                tmp = this.accumRenderTargetA;
-                this.accumRenderTargetA = this.accumRenderTargetB;
-                this.accumRenderTargetB = tmp;
+            //     // Swap render targets for accumulator
+            //     tmp = this.accumRenderTargetA;
+            //     this.accumRenderTargetA = this.accumRenderTargetB;
+            //     this.accumRenderTargetB = tmp;
 
-                this.renderer.render(this.scene, camera, this.renderTarget);
-                this.accumMaterial.uniforms.accumTex.value = this.accumRenderTargetA.texture;
-                this.renderer.render(this.accumMesh, camera, this.accumRenderTargetB);
-                this.frame++;
+            //     this.renderer.render(this.scene, camera, this.renderTarget);
+            //     this.accumMaterial.uniforms.accumTex.value = this.accumRenderTargetA.texture;
+            //     this.renderer.render(this.accumMesh, camera, this.accumRenderTargetB);
+            //     this.frame++;
 
-                this.varianceMaterial.uniforms.previousTex.value = this.accumRenderTargetA.texture;
-                this.varianceMaterial.uniforms.tex.value = this.accumRenderTargetB.texture;
-                this.renderer.render(this.varianceMesh, camera, this.varianceRenderTarget);
-            }
+            //     this.varianceMaterial.uniforms.previousTex.value = this.accumRenderTargetA.texture;
+            //     this.varianceMaterial.uniforms.tex.value = this.accumRenderTargetB.texture;
+            //     this.renderer.render(this.varianceMesh, camera, this.varianceRenderTarget);
+            // }
 
             if (window.blurMove.checked && this.frame < 30 && dprValue === 1 && !this.controls.debug) {
                 this.blurMaterial.uniforms.sigma.value = 15.0 * Math.pow(1.0-(0.5-0.5*Math.cos(Math.PI * this.frame / 30)), 4.0);
@@ -955,9 +957,9 @@ class WebGLTracer2 {
                 this.renderer.render(this.blurMesh, camera, this.renderTarget);
                 this.blitMaterial.uniforms.tex.value = this.renderTarget.texture;
             } else {
-                this.bloomMaterial.uniforms.tex.value = this.accumRenderTargetB.texture;
-                this.renderer.render(this.bloomMesh, camera, this.renderTarget);
-                this.blitMaterial.uniforms.tex.value = this.renderTarget.texture;
+                // this.bloomMaterial.uniforms.tex.value = this.accumRenderTargetB.texture;
+                // this.renderer.render(this.bloomMesh, camera, this.renderTarget);
+                this.blitMaterial.uniforms.tex.value = this.accumRenderTargetB.texture;
             }
             this.renderer.render(this.blitMesh, camera);
 

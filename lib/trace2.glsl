@@ -167,13 +167,13 @@ bool getSpecular(Ray r, int hitIndex, vec3 nml, Material material, out float fre
 bool traceBounce(inout Ray r, in Plane plane, in vec3 bg0, out Hit hit, out float fresnel, out vec3 nml, out vec3 texNml, out Material material, out Coating coating, out vec3 transmit, in bool isPrimaryRay, inout bool specular) {
 	hit = setupHit();
 	intersectGrid(r, hit);
-	if (hit.distance >= SKY_DISTANCE) {
+    if (hit.distance >= SKY_DISTANCE) {
 		return false;
 	}
-    // r.light.r += float(showFocalPlane && isPrimaryRay) * 10.0 * (
-    //     2.0 * clamp(0.1 / cameraApertureSize - abs(hit.distance - cameraFocusDistance), 0.0, 0.1) +
-    //     200.0 * max(0.0, 0.03 - abs(hit.distance - cameraFocusDistance)) 
-    // );
+    r.light.r += float(showFocalPlane && isPrimaryRay) * 10.0 * (
+        2.0 * clamp(0.1 / cameraApertureSize - abs(hit.distance - cameraFocusDistance), 0.0, 0.1) +
+        200.0 * max(0.0, 0.03 - abs(hit.distance - cameraFocusDistance)) 
+    );
 
 	r.lastTested = hit.index;
 	r.o += r.d * hit.distance;
@@ -283,6 +283,9 @@ vec3 trace(vec2 fragCoord) {
                 lastNml = nml;
             }
             r.invD = 1.0 / r.d;
+            if (length(transmit) < 0.01) {
+                break;
+            }
 			if (!traceBounce(r, plane, bg0, hit, fresnel, nml, texNml, material, coating, transmit, false, specular)) {
 				light += vec4(r.light + r.transmit * skybox(r), 1.0);
 				break;
