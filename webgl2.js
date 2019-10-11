@@ -67,15 +67,16 @@ Material.makeRandom = function() {
     const m = new Material();
     m.specular.color = vecToArray(vec3(1.0)); //vecToArray(addS(mulS(randomVec3Positive(), 0.05), 0.95));
     m.coat.color = vecToArray(vec3(0.85, 0.51, 0.35)); //vecToArray(randomVec3Positive());
-    m.volume.color = vecToArray(vec3(0.45, 0.71, 0.85)); //vecToArray(addS(mulS(randomVec3Positive(), 0.8), 0.1));
+    m.volume.color = vecToArray(vec3(0.9, 0.71, 0.5)); //vecToArray(addS(mulS(randomVec3Positive(), 0.8), 0.1));
+    m.specular.forwardScatter = m.coat.forwardScatter = -4;
     // if (random() < 0.01) {
     //     m.emission = vecToArray(addS(mulS(randomVec3Positive(), 40.15), 2.05));
     // }
-    m.volume.roughness = 0.95; //random();
-    m.specular.roughness = 0.05; //random();
-    m.specular.IOR = 1.5; // + random();
-    m.volume.density = 1;
-    m.coat.IOR = 1.5; // + random();
+    m.volume.roughness = -3; //random();
+    m.specular.roughness = 0.0; //random();
+    m.specular.IOR = 1; // + random();
+    m.volume.density = 0.5;
+    m.coat.IOR = 1; // + random();
     return m;
 };
 
@@ -672,46 +673,44 @@ class WebGLTracer2 {
                 bool converged = varianceMetrics.z > 0.0;
                 bool convergedVariance = varianceMetrics.w > 0.0;
 
-                /*
-                if (errorLum > 0.01 || length(FragColor.rgb) < 0.4) {
-                    vec3 v[9];
-                    v[0] = toGamma(texelFetch(tex, ivec2(gl_FragCoord.xy) + ivec2(0, -1), 0));
-                    v[1] = toGamma(texelFetch(tex, ivec2(gl_FragCoord.xy) + ivec2(0, -1), 0));
-                    v[2] = toGamma(texelFetch(tex, ivec2(gl_FragCoord.xy) + ivec2(1, 0), 0));
-                    v[3] = toGamma(texelFetch(tex, ivec2(gl_FragCoord.xy) + ivec2(-1, 0), 0));
-                    v[4] = FragColor.rgb;
-                    v[5] = toGamma(texelFetch(tex, ivec2(gl_FragCoord.xy) + ivec2(1, 0), 0));
-                    v[6] = toGamma(texelFetch(tex, ivec2(gl_FragCoord.xy) + ivec2(0, 1), 0));
-                    v[7] = toGamma(texelFetch(tex, ivec2(gl_FragCoord.xy) + ivec2(0, 1), 0));
-                    v[8] = toGamma(texelFetch(tex, ivec2(gl_FragCoord.xy) + ivec2(1, 0), 0));
+                // if (errorLum > 0.01 || length(FragColor.rgb) < 0.4) {
+                //     vec3 v[9];
+                //     v[0] = toGamma(texelFetch(tex, ivec2(gl_FragCoord.xy) + ivec2(0, -1), 0));
+                //     v[1] = toGamma(texelFetch(tex, ivec2(gl_FragCoord.xy) + ivec2(0, -1), 0));
+                //     v[2] = toGamma(texelFetch(tex, ivec2(gl_FragCoord.xy) + ivec2(1, 0), 0));
+                //     v[3] = toGamma(texelFetch(tex, ivec2(gl_FragCoord.xy) + ivec2(-1, 0), 0));
+                //     v[4] = FragColor.rgb;
+                //     v[5] = toGamma(texelFetch(tex, ivec2(gl_FragCoord.xy) + ivec2(1, 0), 0));
+                //     v[6] = toGamma(texelFetch(tex, ivec2(gl_FragCoord.xy) + ivec2(0, 1), 0));
+                //     v[7] = toGamma(texelFetch(tex, ivec2(gl_FragCoord.xy) + ivec2(0, 1), 0));
+                //     v[8] = toGamma(texelFetch(tex, ivec2(gl_FragCoord.xy) + ivec2(1, 0), 0));
 
-                    if (length(v[4]) > 0.2 && (length(v[4]) > 1.2 || length(v[4] - v[5]) > 0.1 || length(v[4] - v[3]) > 0.1 || length(v[4] - v[1]) > 0.1 || length(v[4] - v[7]) > 0.1)) { 
-                        #define s2(a, b)				temp = a; a = min(a, b); b = max(temp, b);
-                        #define mn3(a, b, c)			s2(a, b); s2(a, c);
-                        #define mx3(a, b, c)			s2(b, c); s2(a, c);
+                //     if (length(v[4]) > 0.2 && (length(v[4]) > 1.2 || length(v[4] - v[5]) > 0.1 || length(v[4] - v[3]) > 0.1 || length(v[4] - v[1]) > 0.1 || length(v[4] - v[7]) > 0.1)) { 
+                //         #define s2(a, b)				temp = a; a = min(a, b); b = max(temp, b);
+                //         #define mn3(a, b, c)			s2(a, b); s2(a, c);
+                //         #define mx3(a, b, c)			s2(b, c); s2(a, c);
 
-                        #define mnmx3(a, b, c)			mx3(a, b, c); s2(a, b);                                   // 3 exchanges
-                        #define mnmx4(a, b, c, d)		s2(a, b); s2(c, d); s2(a, c); s2(b, d);                   // 4 exchanges
-                        #define mnmx5(a, b, c, d, e)	s2(a, b); s2(c, d); mn3(a, c, e); mx3(b, d, e);           // 6 exchanges
-                        #define mnmx6(a, b, c, d, e, f) s2(a, d); s2(b, e); s2(c, f); mn3(a, b, c); mx3(d, e, f); // 7 exchanges
+                //         #define mnmx3(a, b, c)			mx3(a, b, c); s2(a, b);                                   // 3 exchanges
+                //         #define mnmx4(a, b, c, d)		s2(a, b); s2(c, d); s2(a, c); s2(b, d);                   // 4 exchanges
+                //         #define mnmx5(a, b, c, d, e)	s2(a, b); s2(c, d); mn3(a, c, e); mx3(b, d, e);           // 6 exchanges
+                //         #define mnmx6(a, b, c, d, e, f) s2(a, d); s2(b, e); s2(c, f); mn3(a, b, c); mx3(d, e, f); // 7 exchanges
 
-                        vec3 temp;
-                        mnmx6(v[0], v[1], v[2], v[3], v[4], v[5]);
-                        mnmx5(v[1], v[2], v[3], v[4], v[6]);
-                        mnmx4(v[2], v[3], v[4], v[7]);
-                        mnmx3(v[3], v[4], v[8]);
-                        FragColor.rgb = v[4];
-                    } else {
-                        FragColor.rgb = toGamma(
-                            src +
-                            texelFetch(tex, ivec2(gl_FragCoord.xy) + ivec2(0, -1), 0) + 
-                            texelFetch(tex, ivec2(gl_FragCoord.xy) + ivec2(0, 1), 0) + 
-                            texelFetch(tex, ivec2(gl_FragCoord.xy) + ivec2(1, 0), 0) + 
-                            texelFetch(tex, ivec2(gl_FragCoord.xy) + ivec2(-1, 0), 0)
-                        );
-                    }
-                }
-                */
+                //         vec3 temp;
+                //         mnmx6(v[0], v[1], v[2], v[3], v[4], v[5]);
+                //         mnmx5(v[1], v[2], v[3], v[4], v[6]);
+                //         mnmx4(v[2], v[3], v[4], v[7]);
+                //         mnmx3(v[3], v[4], v[8]);
+                //         FragColor.rgb = v[4];
+                //     } else {
+                //         FragColor.rgb = toGamma(
+                //             src +
+                //             texelFetch(tex, ivec2(gl_FragCoord.xy) + ivec2(0, -1), 0) + 
+                //             texelFetch(tex, ivec2(gl_FragCoord.xy) + ivec2(0, 1), 0) + 
+                //             texelFetch(tex, ivec2(gl_FragCoord.xy) + ivec2(1, 0), 0) + 
+                //             texelFetch(tex, ivec2(gl_FragCoord.xy) + ivec2(-1, 0), 0)
+                //         );
+                //     }
+                // }
 
                 if (showConverged) {
                     if (( ((errorLum < 0.0001)) && (converged || convergedVariance || (iFrame >= 2.0 && (errorLum < 0.01 || totalVariance < 0.01))) )) {
@@ -790,7 +789,7 @@ class WebGLTracer2 {
     }
 
     render() {
-        if (this.controls.changed || this.frame < 1) {
+        if (this.controls.changed || this.frame < 1245) {
 
             if (this.controls.focusPoint) {
                 const ray = this.setupRay({
@@ -957,8 +956,8 @@ class WebGLTracer2 {
                 this.renderer.render(this.blurMesh, camera, this.renderTarget);
                 this.blitMaterial.uniforms.tex.value = this.renderTarget.texture;
             } else {
-                // this.bloomMaterial.uniforms.tex.value = this.accumRenderTargetB.texture;
-                // this.renderer.render(this.bloomMesh, camera, this.renderTarget);
+                this.bloomMaterial.uniforms.tex.value = this.accumRenderTargetB.texture;
+                this.renderer.render(this.bloomMesh, camera, this.renderTarget);
                 this.blitMaterial.uniforms.tex.value = this.accumRenderTargetB.texture;
             }
             this.renderer.render(this.blitMesh, camera);
@@ -1027,7 +1026,7 @@ function LoadOBJ(path) {
     const shaderNames = ['primitives', 'voxelgrid_superflat', 'trace2'];
 
     const shaderRes = shaderNames.map(name => fetch(`lib/${name}.glsl`));
-    const bunny = await ObjParse.load('bunny.obj');
+    const bunny = await ObjParse.load('fishes.obj');
 
     const shadersT = await Promise.all(shaderRes.map(async res => (await res).text()));
     shaders = shadersT;
@@ -1052,10 +1051,10 @@ function LoadOBJ(path) {
         if (z > bbox.max.z) bbox.max.z = z;
     }
 
-    var scale = 2.5 / max(bbox.max.z - bbox.min.z, bbox.max.x - bbox.min.x);
+    var scale = 5.5 / max(bbox.max.z - bbox.min.z, bbox.max.x - bbox.min.x);
     var xOffset = -(bbox.max.x+bbox.min.x)/2;
     var zOffset = -(bbox.max.z+bbox.min.z)/2;
-    var yOffset = -bbox.min.y + 0.001;
+    var yOffset = -(bbox.max.y+bbox.min.y)/2;
 
     for (var i = 0; i < verts.length; i += 3) {
         verts[i] += xOffset;

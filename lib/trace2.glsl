@@ -55,7 +55,7 @@ vec4 triPlanar(vec3 nml, sampler2DArray tex, int index, vec3 p0, vec3 offset, ve
     vec3 p = (p0 + offset) * scale;
     // return texture(tex, toOct(p) * scale.xy, -100.0);
 
-    vec3 blending = pow(nml, vec3(8.0));
+    vec3 blending = pow(nml, vec3(32.0));
     blending = normalize(max(blending, 0.00001)); // Force weights to sum to 1.0
     float b = (blending.x + blending.y + blending.z);
     blending /= vec3(b, b, b);
@@ -106,7 +106,7 @@ vec3 getTransmit(in Ray r, in int index, in Coating coating, in vec3 nml) {
 }
 
 vec3 getEmission(in Ray r, in int index, in Material material, in vec3 nml) {
-    return abs(r.o.y - 0.01) < 0.0025 ? vec3(20.0, 10.0, 3.0) : vec3(0.0);
+    return abs(mod(dot(r.o, r.o), 0.25)) < 0.025 ? vec3(20.0, 10.0, 3.0) : vec3(0.0);
     //return sampleVec3(material.emission, nml, r);
 }
 
@@ -193,10 +193,10 @@ bool traceBounce(inout Ray r, in Plane plane, in vec3 bg0, out Hit hit, out floa
 }
 
 vec3 skybox(in Ray r) {
-    vec3 bg = clamp(dot(r.d, vec3(0.0, 1.0, 0.0)), 0.0, 1.0) * vec3(0.3, 0.6, 1.0) + vec3(1.0);
-    bg += vec3(10.0, 9.0, 7.0) * pow(clamp(dot(r.d, normalize(vec3(6.0, 10.0, 8.0))), 0.0, 1.0), 16.0);
-    bg += vec3(10.0, 8.0, 6.0) * 4.0 * pow(clamp(dot(r.d, normalize(vec3(6.0, 10.0, 8.0))), 0.0, 1.0), 64.0);
-    bg += 0.5 * 5.5*vec3(1.0, 0.8, 0.7) * abs(1.0+r.d.y);
+    vec3 bg = clamp(dot(r.d, vec3(0.0, 1.0, 0.0)), 0.0, 1.0) * vec3(0.3, 0.5, 0.7);
+    bg += vec3(12.0, 9.0, 6.0) * pow(clamp(dot(r.d, normalize(vec3(12.0, 8.0, 6.0))), 0.0, 1.0), 16.0);
+    bg += vec3(10.0, 8.0, 6.0) * 4.0 * pow(clamp(dot(r.d, normalize(vec3(12.0, 8.0, 6.0))), 0.0, 1.0), 64.0);
+    bg += 0.25*vec3(0.6, 0.8, 0.97) * abs(1.0+r.d.z);
     return bg;
 }
 
@@ -228,15 +228,15 @@ vec3 trace(vec2 fragCoord) {
 
 	if (hitScene) {
 		float fakeBounce = iFrame * 1025.0;
-		for (int i = 0; i < 15; i++) {
+		for (int i = 0; i < 6; i++) {
 			float idx = fragCoord.y * iResolution.x * 16.0 + fragCoord.x * 16.0 + fakeBounce;
 			ivec2 idxv = ivec2(mod(idx / 1024.0, 1024.0), mod(idx, 1024.0));
             float troughness = sampleFloat(coating.roughness, texNml, r);
             float randomDirFactor = (1.0-fresnel*fresnel) * troughness;
 
-            // float bounceCount = (randomDirFactor*0.1 > random(r.o.xy)) ? 2.0 : 1.0;
+            float bounceCount = (randomDirFactor*0.1 > random(r.o.xy)) ? 2.0 : 1.0;
 
-            // vec3 retroReflectiveness = vec3(float((random(r.d.xz) < 0.1 && bounceCount > 1.0) || (mod(length(r.o), 0.1) < 0.0 && random(r.o.yz) < (0.75 - 0.75 * fresnel))));
+            vec3 retroReflectiveness = vec3(float((random(r.d.xz) < 0.1 && bounceCount > 1.0) || (mod(length(r.o), 0.1) < 0.0 && random(r.o.yz) < (0.75 - 0.75 * fresnel))));
 
             vec3 surfaceRay;
 
@@ -261,24 +261,24 @@ vec3 trace(vec2 fragCoord) {
                     normalize(reflect(r.d, lastNml)),
                     normalize(-r.d * (1.0 - material.pigment.forwardScatter) + randomVec3(idxv))
                 , min(10.0*scatterDistance, 1.0)));
-                r.transmit *= pow(transmit, vec3(exp(-material.pigment.density * scatterDistance))); // pow(transmit, vec3(bounceCount));
+                r.transmit *= max(vec3(0.0), pow(transmit, vec3(exp(-material.pigment.density * scatterDistance)))); // pow(transmit, vec3(bounceCount));
             } else {
 
                 if (!specular && material.pigment.density < 1.0) {
                     surfaceRay = refract(r.d, nml, inside < 0.0 ? (1.0 / material.specular.IOR) : (material.specular.IOR / 1.0));
                     nml = -nml;
                     r.IOR = inside < 0.0 ? material.specular.IOR : 1.0;
-                    // r.transmit *= transmit;
+                    //r.transmit *= max(vec3(0.0), transmit);
                 } else {
                     surfaceRay = reflect(r.d, nml);
-                    r.transmit *= transmit; // pow(transmit, vec3(bounceCount));
+                    r.transmit *= max(vec3(0.0), pow(transmit, vec3(bounceCount)));
                 }
 
-                r.d = normalize(mix(
+                r.d = normalize(mix(mix(
                     surfaceRay, 
                     nml + randomVec3(idxv),
                     randomDirFactor
-                )); //, -r.d + 0.1*randomVec3(idxv), retroReflectiveness));
+                ), -r.d + 0.1*randomVec3(idxv), retroReflectiveness));
                 r.o = r.o + nml * epsilon;
                 lastNml = nml;
             }
@@ -287,7 +287,7 @@ vec3 trace(vec2 fragCoord) {
                 break;
             }
 			if (!traceBounce(r, plane, bg0, hit, fresnel, nml, texNml, material, coating, transmit, false, specular)) {
-				light += vec4(r.light + r.transmit * skybox(r), 1.0);
+				light += vec4(max(vec3(0.0), r.light + r.transmit * skybox(r)), 1.0);
 				break;
 			}
             fakeBounce++;
