@@ -42,7 +42,7 @@ Ray setupRay(vec2 fragCoord, float off) {
 
 vec3 getColor(in Ray r, in int index) {
 	if (index < 0) {
-		return vec3(0.01);
+		return vec3(0.5);
 	} else {
 		return mix(vec3(0.95, 0.66, 0.15), vec3(0.05, 0.07, 0.12), float(stripes) * pow(fract(roughness*dot(r.o, r.o)*10.0), 0.125));
 	}
@@ -109,7 +109,7 @@ vec3 trace(vec2 fragCoord) {
 			if (stripes) {
 				r.d = normalize(mix(reflect(r.d, nml), nml + randomVec3(idxv), (1.0-fresnel) * fract(roughness*dot(r.o, r.o)*10.0)));// + (abs(dot(r.d, nml)) * roughness) * randomVec3(5.0+r.o+r.d));
 			} else {
-				r.d = normalize(mix(reflect(r.d, nml), nml + randomVec3(idxv), (1.0-fresnel) * (hit.index >= 0 ? roughness : 0.05)));// + (abs(dot(r.d, nml)) * roughness) * randomVec3(5.0+r.o+r.d));
+				r.d = normalize(mix(reflect(r.d, nml), nml + randomVec3(idxv), (1.0-fresnel) * (hit.index >= 0 ? roughness : fract(0.2*dot(r.o, r.o)*10.0))));// + (abs(dot(r.d, nml)) * roughness) * randomVec3(5.0+r.o+r.d));
 			}
 			r.invD = 1.0 / r.d;
 			r.o = r.o + nml * epsilon;
