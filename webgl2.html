@@ -35,7 +35,7 @@
 			}
 
             input#focalLength,
-            input#apertureSize
+            input#fStop
             {
                 -webkit-appearance: none;
                 height: 1px;
@@ -49,7 +49,7 @@
 				margin-bottom: 1em;
             }
             input#focalLength:after,
-            input#apertureSize:after {
+            input#fStop:after {
                 position: absolute;
                 right: -24px;
                 top: -6px;
@@ -114,7 +114,7 @@
 		<div id="controls">
 			<div>
 				ƒ-stop
-				<input type="range" min="1" max="16" step="0.1" value="16" id="apertureSize">
+				<input type="range" min="1" max="32" step="0.1" value="16" id="fStop">
 			</div>
 			<div>
 				Focal length

@@ -886,7 +886,7 @@ class WebGLTracer2 {
             camera.inverseMatrix.getInverse(camera.projectionMatrix);
             camera.inverseMatrix.multiplyMatrices(camera.matrixWorld, camera.inverseMatrix);
             const previousApertureSize = camera.apertureSize;
-            camera.apertureSize = Math.pow(1.33, 1-window.apertureSize.value);
+            camera.apertureSize = 0.005 * window.focalLength.value / window.fStop.value;
 
             const apertureChanged = (camera.apertureSize !== previousApertureSize)
 
@@ -1168,13 +1168,13 @@ function LoadOBJ(path) {
 
 
     
-    window.focalLength.oninput = window.apertureSize.oninput = function(ev) {
+    window.focalLength.oninput = window.fStop.oninput = function(ev) {
         tracer.controls.pinching = true;
         tracer.controls.changed = true;
         this.setAttribute('value', this.value);
     };
 
-    window.focalLength.onchange = window.apertureSize.onchange = function() {
+    window.focalLength.onchange = window.fStop.onchange = function() {
         tracer.controls.pinching = false;
         tracer.controls.changed = true;
         this.setAttribute('value', this.value);
