@@ -194,6 +194,14 @@ vec3 randomVec3(in ivec2 st) {
     return vec3(sqrt(1.0 - r * r) * vec2(cos(a), sin(a)), r);
 }
 
+vec3 randomInUnitSphere(in ivec2 st) {
+	vec3 ar = randomBlue(st).zwx;
+	float a = ar.x * (2.0 * 3.14159);
+	float r = ar.y;
+    r = 2.0 * r - 1.0;
+    return vec3(sqrt(1.0 - r * r) * vec2(cos(a), sin(a)), r) * pow(ar.z, 1.0 / 3.0);
+}
+
 vec3 randomVec3(in vec3 p) {
 	return randomVec3(
         ivec2(

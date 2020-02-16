@@ -6,10 +6,7 @@ uniform float deviceEpsilonTrace;
 uniform float cameraFocusDistance;
 uniform float cameraApertureSize;
 
-uniform float roughness;
-
 uniform bool showFocalPlane;
-uniform bool stripes;
 
 uniform highp usampler2D materialIndices;
 uniform int materialIndicesWidth;
@@ -276,7 +273,7 @@ vec3 trace(vec2 fragCoord) {
 
                 r.d = normalize(mix(mix(
                     surfaceRay, 
-                    nml + randomVec3(idxv),
+                    nml + randomInUnitSphere(idxv),
                     randomDirFactor
                 ), -r.d + 0.1*randomVec3(idxv), retroReflectiveness));
                 r.o = r.o + nml * epsilon;

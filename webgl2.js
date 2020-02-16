@@ -294,10 +294,8 @@ class WebGLTracer2 {
                 previousCameraPosition: { value: new THREE.Vector3() },
                 deviceEpsilon: {value: mobile ? 0.01 : 0.001},
                 deviceEpsilonTrace: {value: mobile ? 0.05 : 0.01},
-                roughness: {value: 0.2},
                 costVis: {value: false},
                 aaSize: {value: 4.0},
-                stripes: { value: false },
                 showFocalPlane: { value: false },
                 showBoost: { value: false }
             },
@@ -344,7 +342,7 @@ class WebGLTracer2 {
                     bool converged = varianceMetrics.z > 0.0;
                     bool convergedVariance = varianceMetrics.w > 0.0;
 
-                    if (( ((iFrame > 2.0 && iFrame < 10.0) || (iFrame > 30.0 && errorLum < 0.0001)) && (converged || convergedVariance || (iFrame >= 2.0 && (errorLum < 0.01 || totalVariance < 0.01))) )) {
+                    if (( ((iFrame > 2.0 && iFrame < 10.0) || (iFrame > 30.0 && errorLum < 0.0001 && totalVariance < 0.01)) && (converged || convergedVariance || (iFrame >= 2.0 && (errorLum < 0.01 || totalVariance < 0.01))) )) {
                         FragColor = vec4(0.0, 0.0, 0.0, 0.0);
                         return;
                     }
@@ -750,7 +748,7 @@ class WebGLTracer2 {
         this.startTime = Date.now();
 
         this.rayBudget = 1;
-        this.movingRayBudget = 1;
+        this.startRayBudget = 1;
         this.frameTime = 0;
         this.frameStartTime = Date.now();
 
@@ -812,6 +810,7 @@ class WebGLTracer2 {
             this.material.uniforms.previousCameraMatrixWorld.value.copy(camera.matrixWorld);
             this.material.uniforms.previousCameraPosition.value.copy(camera.position);
             this.material.uniforms.previousCameraInverseMatrix.value.copy(camera.inverseMatrix);
+            camera.setFocalLength(window.focalLength.value);
             camera.lookAt(camera.target);
             camera.updateProjectionMatrix();
             camera.updateMatrixWorld();
@@ -826,18 +825,11 @@ class WebGLTracer2 {
 
             const controlsActive = (cameraMatrixChanged || apertureChanged || this.controls.down || this.controls.pinching);
 
-            if (cameraMatrixChanged || apertureChanged || this.controls.changed) {
-                this.rayBudget = 1;
+            if (cameraMatrixChanged || apertureChanged || this.controls.changed || controlsActive) {
                 this.frame = 0;
             }
 
-            if (this.frameTime < 25) {
-                this.rayBudget = Math.min(1000, this.rayBudget*1.1);
-            } else if (this.frameTime > 40) {
-                this.rayBudget = Math.max(1, this.rayBudget*0.8);
-            }
             this.stats.log('Frame time', Math.round(this.frameTime*100)/100 + ' ms');
-            this.stats.log('Ray budget', Math.round(this.rayBudget*100)/100);
             
             this.controls.changed = false;
 
@@ -849,14 +841,9 @@ class WebGLTracer2 {
 
             var dprValue = dpr;
 
-            if (controlsActive) {
-                this.rayBudget = 1;
-            }
-
             if (this.renderer.domElement.width !== window.innerWidth*dpr ||
                 this.renderer.domElement.height !== window.innerHeight*dpr
             ) {
-                this.rayBudget /= (dpr * dpr);
                 this.frame = 0;
                 this.renderer.setSize(window.innerWidth*dpr, window.innerHeight*dpr);
                 this.renderTarget.setSize(window.innerWidth*dpr, window.innerHeight*dpr);
@@ -865,7 +852,18 @@ class WebGLTracer2 {
                 this.varianceRenderTarget.setSize(window.innerWidth*dpr, window.innerHeight*dpr);
             }
 
-            this.material.uniforms.stripes.value = !!window.stripes.checked;
+            if (this.frame === 0) this.rayBudget = 1;
+
+            if (this.frameTime < 18) {
+                if (this.frame === 0) this.startRayBudget = Math.min(1000, this.startRayBudget*1.1);
+                else this.rayBudget = Math.min(1000, this.rayBudget*1.1);
+            } else if (this.frameTime > 20) {
+                if (this.frame === 0) this.startRayBudget = Math.max(0.01, this.startRayBudget*0.8);
+                else this.rayBudget = Math.max(1, this.rayBudget*0.8);
+            }
+
+            this.stats.log('Ray budget', Math.round((this.frame === 0 ? this.startRayBudget : this.rayBudget)*100)/100);
+
             this.material.uniforms.showFocalPlane.value = !!window.showFocalPlane.checked;
             this.material.uniforms.showBoost.value = !!window.showBoost.checked;
 
@@ -873,8 +871,7 @@ class WebGLTracer2 {
             this.material.uniforms.cameraApertureSize.value = camera.apertureSize;
             this.material.uniforms.iResolution.value[0] = this.renderer.domElement.width;
             this.material.uniforms.iResolution.value[1] = this.renderer.domElement.height;
-            this.material.uniforms.roughness.value = window.roughness.value / 100;
-            this.material.uniforms.rayBudget.value = this.rayBudget;
+            this.material.uniforms.rayBudget.value = this.frame === 0 ? this.startRayBudget : this.rayBudget;
             this.material.uniforms.cameraFocusDistance.value = this.focusDistance;
 
             this.material.uniforms.iFrame.value = this.frame;
@@ -1102,13 +1099,13 @@ function LoadOBJ(path) {
 
 
     
-    window.roughness.oninput = window.apertureSize.oninput = function(ev) {
+    window.focalLength.oninput = window.apertureSize.oninput = function(ev) {
         tracer.controls.pinching = true;
         tracer.controls.changed = true;
         this.setAttribute('value', this.value);
     };
 
-    window.roughness.onchange = window.apertureSize.onchange = function() {
+    window.focalLength.onchange = window.apertureSize.onchange = function() {
         tracer.controls.pinching = false;
         tracer.controls.changed = true;
         this.setAttribute('value', this.value);
@@ -1116,7 +1113,6 @@ function LoadOBJ(path) {
         
     window.showFocalPlane.onchange = 
     window.showBoost.onchange = 
-    window.stripes.onchange = 
     window.blurMove.onchange = function() {
         tracer.controls.changed = true;
     };

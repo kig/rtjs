@@ -34,7 +34,7 @@
 				cursor: pointer;
 			}
 
-            input#roughness,
+            input#focalLength,
             input#apertureSize
             {
                 -webkit-appearance: none;
@@ -48,7 +48,7 @@
 				margin-top: 1em;
 				margin-bottom: 1em;
             }
-            input#roughness:after,
+            input#focalLength:after,
             input#apertureSize:after {
                 position: absolute;
                 right: -24px;
@@ -109,20 +109,16 @@
 	<body>
 		<div id="controls">
 			<div>
-				Roughness
-				<input type="range" min="0" max="100" step="1" value="50" id="roughness">
-			</div>
-			<div>
 				ƒ-stop
 				<input type="range" min="1" max="16" step="0.1" value="16" id="apertureSize">
 			</div>
 			<div>
-				<label for="showFocalPlane">Show focal plane</label>
-				<input type="checkbox" id="showFocalPlane">
+				Focal length
+				<input type="range" min="14" max="200" step="2" value="50" id="focalLength">
 			</div>
 			<div>
-				<label for="stripes">Stripes</label>
-				<input type="checkbox" id="stripes">
+				<label for="showFocalPlane">Show focal plane</label>
+				<input type="checkbox" id="showFocalPlane">
 			</div>
 			<div>
 				<label for="blurMove">Blur on move</label>
