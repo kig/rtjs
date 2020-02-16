@@ -94,7 +94,7 @@ float sampleFloat(float value, vec3 nml, Ray r) {
 
 
 Material getMaterial(Ray r, int index) {
-    int materialIndex = int(readMaterialIndex(materialIndices, materialIndicesWidth, index));
+    int materialIndex = index < 0 ? 2-index : int(readMaterialIndex(materialIndices, materialIndicesWidth, index));
     return readMaterial(materials, materialsWidth, materialIndex);
 }
 
@@ -108,6 +108,10 @@ vec3 getEmission(in Ray r, in int index, in Material material, in vec3 nml) {
 }
 
 vec3 getNormal(Ray r, int hitIndex, Coating coating, out vec3 rawNormal) {
+    if (hitIndex < 0) {
+        rawNormal = vec3(0.0, 1.0, 0.0);
+        return rawNormal;
+    }
     vec3 nml = triNormal(triangles, trianglesWidth, normals, normalsWidth, r.o, hitIndex);
     rawNormal = nml;
 
