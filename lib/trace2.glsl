@@ -94,7 +94,7 @@ float sampleFloat(float value, vec3 nml, Ray r) {
 
 
 Material getMaterial(Ray r, int index) {
-    int materialIndex = index < 0 ? 2-index : int(readMaterialIndex(materialIndices, materialIndicesWidth, index));
+    int materialIndex = index < 0 ? 2+index : int(readMaterialIndex(materialIndices, materialIndicesWidth, index));
     return readMaterial(materials, materialsWidth, materialIndex);
 }
 
@@ -103,8 +103,8 @@ vec3 getTransmit(in Ray r, in int index, in Coating coating, in vec3 nml) {
 }
 
 vec3 getEmission(in Ray r, in int index, in Material material, in vec3 nml) {
-    return abs(mod(dot(r.o, r.o), 0.25)) < 0.025 ? vec3(20.0, 10.0, 3.0) : vec3(0.0);
-    //return sampleVec3(material.emission, nml, r);
+    // return abs(mod(dot(r.o, r.o), 0.25)) < 0.025 ? vec3(20.0, 10.0, 3.0) : vec3(0.0);
+    return sampleVec3(material.emission, nml, r);
 }
 
 vec3 getNormal(Ray r, int hitIndex, Coating coating, out vec3 rawNormal) {
@@ -167,7 +167,12 @@ bool getSpecular(Ray r, int hitIndex, vec3 nml, Material material, out float fre
 
 bool traceBounce(inout Ray r, in Plane plane, in vec3 bg0, out Hit hit, out float fresnel, out vec3 nml, out vec3 texNml, out Material material, out Coating coating, out vec3 transmit, in bool isPrimaryRay, inout bool specular) {
 	hit = setupHit();
+	Hit hit2 = setupHit();
+	intersectPlane(r, plane, hit2);
 	intersectGrid(r, hit);
+    if (hit2.distance < hit.distance) {
+        hit = hit2;
+    }
     if (hit.distance >= SKY_DISTANCE) {
 		return false;
 	}
