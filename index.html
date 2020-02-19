@@ -3,87 +3,160 @@
 	<head>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
-		<title>Ray Tracing Algo Workbench</title>
+		<title>WebGL Ray Tracing Algo Workbench</title>
 		<style>
 			html, body {
-				overflow-x: hidden;
+				overflow: hidden;
 				margin: 0;
 				padding: 0;
+                background-color: black;
+			}
+            canvas {
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100% !important;
+                height: 100% !important;
+            }
+            #controls {
+                position: absolute;
+                left: 10px;
+                top: 10px;
+                z-index: 2;
+                width: 190px;
+                font-family: Baskerville;
+                font-weight: 600;
+                font-variant: all-small-caps;
+                color: #444;
+				cursor: default;
+            }
 
+			label {
+				cursor: pointer;
 			}
-			canvas {
+
+            input#focalLength,
+            input#fStop
+            {
+                -webkit-appearance: none;
+                height: 1px;
+                margin: 10px;
+                background: #444;
+                outline: none;
+                position: relative;
+                cursor: default;
+				display: block;
+				margin-top: 1em;
+				margin-bottom: 1em;
+            }
+            input#focalLength:after,
+            input#fStop:after {
+                position: absolute;
+                right: -24px;
+                top: -6px;
+                color: #444;
+                content: attr(value);
+                text-align: left;
+                width: 20px;
+                pointer-events: none;
+				font-family: Baskerville;
+				font-weight: 600;
+            }
+
+            input[type="checkbox"],
+            input[type="radio"]
+            {
+                -webkit-appearance: none;
+                vertical-align: top;
+                border: 1px solid #444;
+				border-radius: 2px;
+                background: transparent;
+                top: 3px;
+                width: 9px;
+                height: 9px;
+                position: relative;
+                outline: none;
+                cursor: pointer;
+            }
+			input[type="checkbox"]:checked:after,
+            input[type="radio"]:checked:after
+            {
+				content: "";
 				position: absolute;
-				top: 0;
-				left: 0;
-				width: 100%;
+				top: 0px;
+				left: 1px;
+                width: 5px;
+                height: 7px;
+				background-color: #444;
 			}
-			#controls {
-				position: absolute;
-				box-sizing: border-box;
-				left: 0;
-				top: 100vw;
-				width: 100vw;
-				padding: 10px;
-			}
-			@media (min-width: 500px) {
-				canvas {
-					width: 300px;
-				}
-				#controls {
-					top: 300px;
-				}
-			}
+
+            ::-webkit-slider-thumb {
+                -webkit-appearance: none;
+                height: 17px;
+                width: 2px;
+                background: #444;
+            }
+
+            .stats {
+                padding-top: 10px;
+                font-size: small;
+            }
+
+            .stats div {
+                display: table-row;
+            }
+            .stats span {
+                display: table-cell;
+                padding-right: 10px;
+            }
 		</style>
 	</head>
 	<body>
 		<div id="controls">
-			<button id="useBVH">BVH</button>
-			<button id="useVoxelGrid">VoxelGrid</button>
-			<button id="useBeamSphere">BeamSphere</button>
-			<!-- <button id="usePathCache">PathCache</button> -->
-			<button id="pauseButton">Pause</button>
 			<div>
-				Canvas size
-				<input type="range" min="50" max="300" step="50" value="100" id="canvasSize">
+				ƒ-stop
+				<input type="range" min="1" max="32" step="0.03125" value="16" id="fStop">
 			</div>
 			<div>
-				Primary rays per pixel
-				<input type="range" min="1" max="4" step="1" value="1" id="aaSize">
+				Focal length
+				<input type="range" min="14" max="200" step="2" value="50" id="focalLength">
 			</div>
 			<div>
-				Aperture size
-				<input type="range" min="0" max="10" step="1" value="10" id="apertureSize">
+				<label for="showFocalPlane">Show focal plane</label>
+				<input type="checkbox" id="showFocalPlane">
 			</div>
 			<div>
-				BVH width
-				<input type="range" min="2" max="16" step="1" value="2" id="bvhWidth">
+				<label for="blurMove">Blur on move</label>
+				<input type="checkbox" id="blurMove">
 			</div>
-			<div id="debug"></div>
+			<div>
+				<label for="showBoost">Show sample rate</label>
+				<input type="checkbox" id="showBoost">
+			</div>
+			<div>
+				<label for="showConverged">Show converged</label>
+				<input type="checkbox" id="showConverged">
+			</div>
+			<div>
+				<label for="showSampleCount">Show sample count</label>
+				<input type="checkbox" id="showSampleCount">
+            </div>
+            <div><input type="radio" name="material" id="useRandomMaterials"><label for="useRandomMaterials">Random materials</label></div>
+            <div><input type="radio" name="material" id="useSteelMaterial"><label for="useSteelMaterial">Steel material</label></div>
+            <div><input type="radio" name="material" id="useGlassyMaterial"><label for="useGlassyMaterial">Glassy material</label></div>
+            <div><input type="radio" name="material" id="useOneRandomMaterial"><label for="useOneRandomMaterial">One random material</label></div>
 		</div>
 
-		<script src="lib/third_party/hammer.min.js"></script>
 		<script src="lib/third_party/three.js"></script>
 		<script src="lib/third_party/OBJLoader.js"></script>
-
+		<script src="lib/third_party/hammer.min.js"></script>
 		<script src="lib/objparse.js"></script>
-
 		<script src="lib/vec3.js"></script>
 		<script src="lib/cameracontrols.js"></script>
-
 		<script src="lib/primitives.js"></script>
-
-		<script src="lib/beamsphere.js"></script>
-
-		<script src="lib/voxelgrid.js"></script>
-		<script src="lib/voxelgrid_uint16.js"></script>
-		<script src="lib/voxelgrid_uint16_flat.js"></script>
 		<script src="lib/voxelgrid_uint16_superflat.js"></script>
 
-		<script src="lib/bvh.js"></script>
-
-		<script src="lib/transformnode.js"></script>
-
-		<script src="raytracer.js"></script>
+		<script src="webgl2.js"></script>
 
 	</body>
 </html>
