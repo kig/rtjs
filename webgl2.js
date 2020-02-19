@@ -747,7 +747,12 @@ class WebGLTracer2 {
                     }
                 }
                 if (showSampleCount) {
-                    FragColor = vec4(vec3(mod(src.a/700.0, 4.0)), 1.0);
+                    float f = mod(src.a/15000.0, 1.0);
+                    FragColor = vec4(
+                        f < 0.25 
+                        ? mix(vec3(0.1, 0.2, 0.5), vec3(0.5, 0.8, 0.2), vec3(sqrt(f*4.0)))
+                        : mix(vec3(0.5, 0.8, 0.2), vec3(1.0, 0.4, 0.0), vec3((f-0.25)/0.75*4.0)), 
+                        1.0);
                 }
             }
             `,
