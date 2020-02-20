@@ -34,7 +34,7 @@ function CameraControls(camera, canvas) {
 	});
 
 	hammer.on('pinch', function(ev) {
-		state.distance = min(15, max(1, state.startDistance / ev.scale));
+		state.distance = min(30, max(1, state.startDistance / ev.scale));
 		state.updateCameraPosition();
 		state.pinching = true;
 		state.changed = true;
@@ -66,9 +66,9 @@ function CameraControls(camera, canvas) {
 	};
 	canvas.onwheel = function(ev) {
 		var wd = -ev.deltaY;
-		wd = Math.min(Math.max(-15, wd), 15);
+		wd = Math.min(Math.max(-10, wd), 10);
 		var f = Math.pow(1.01, -wd);
-		state.distance = min(15, max(1, state.distance * f));
+		state.distance = min(30, max(1, state.distance * f));
 		state.updateCameraPosition();
 		state.changed = true;
 		ev.preventDefault();

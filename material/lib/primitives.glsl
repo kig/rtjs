@@ -2,7 +2,7 @@
 
 uniform bool costVis;
 
-uniform mat4 cameraInverseMatrix;
+uniform mat4 uvToWorld;
 uniform mat4 cameraMatrixWorld;
 
 uniform vec2 iResolution;
@@ -258,7 +258,7 @@ vec3 applyMatrix4Rot(in vec3 v, in mat4 m) {
 }
 
 vec3 unproject(in vec3 v) {
-	return applyMatrix4(v, cameraInverseMatrix);
+	return applyMatrix4(v, uvToWorld);
 }
 
 void orthoBasis(out vec3 basis[3], vec3 n)

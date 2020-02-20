@@ -9,6 +9,7 @@
 				overflow: hidden;
 				margin: 0;
 				padding: 0;
+                background-color: black;
 			}
             canvas {
                 position: absolute;
@@ -26,16 +27,16 @@
                 font-family: Baskerville;
                 font-weight: 600;
                 font-variant: all-small-caps;
-                color: #444;
+                color: #ccc;
 				cursor: default;
+                text-shadow: 1px 1px 1px #333;
             }
 
 			label {
 				cursor: pointer;
 			}
 
-            input#focalLength,
-            input#fStop
+            input[type="range"]
             {
                 -webkit-appearance: none;
                 height: 1px;
@@ -48,12 +49,12 @@
 				margin-top: 1em;
 				margin-bottom: 1em;
             }
-            input#focalLength:after,
-            input#fStop:after {
+            input[type="range"]:after
+            {
                 position: absolute;
                 right: -24px;
                 top: -6px;
-                color: #444;
+                color: #ccc;
                 content: attr(value);
                 text-align: left;
                 width: 20px;
@@ -67,7 +68,7 @@
             {
                 -webkit-appearance: none;
                 vertical-align: top;
-                border: 1px solid #444;
+                border: 1px solid #ccc;
 				border-radius: 2px;
                 background: transparent;
                 top: 3px;
@@ -82,11 +83,11 @@
             {
 				content: "";
 				position: absolute;
-				top: 0px;
+				top: 1px;
 				left: 1px;
                 width: 5px;
-                height: 7px;
-				background-color: #444;
+                height: 5px;
+				background-color: #ccc;
 			}
 
             ::-webkit-slider-thumb {
@@ -94,6 +95,7 @@
                 height: 17px;
                 width: 2px;
                 background: #444;
+                border-left: 1px solid #ccc
             }
 
             .stats {
@@ -114,11 +116,35 @@
 		<div id="controls">
 			<div>
 				ƒ-stop
-				<input type="range" min="1" max="32" step="0.1" value="16" id="fStop">
+				<input type="range" min="1" max="32" step="0.03125" value="16" id="fStop">
 			</div>
 			<div>
 				Focal length
 				<input type="range" min="14" max="200" step="2" value="50" id="focalLength">
+			</div>
+			<div>
+				Reprojection weight
+				<input type="range" min="1" max="200" step="1" value="120" id="temporalReprojectionWeight">
+			</div>
+			<div>
+				Reprojection cutoff
+				<input type="range" min="0" max="4" step="0.05" value="0.3" id="temporalReprojectionVarianceCutoff">
+			</div>
+			<div>
+				First frame boost
+				<input type="range" min="1" max="8" step="1" value="1" id="firstFrameSampleBoost">
+			</div>
+			<div>
+				Max frames to render
+				<input type="range" min="1" max="1245" step="1" value="1245" id="maxFramesToRender">
+			</div>
+			<div>
+				<label for="useTemporalReprojection">Reprojection</label>
+				<input type="checkbox" id="useTemporalReprojection" checked>
+			</div>
+			<div>
+				<label for="temporalReprojectionShowRejection">Show rejections</label>
+				<input type="checkbox" id="temporalReprojectionShowRejection">
 			</div>
 			<div>
 				<label for="showFocalPlane">Show focal plane</label>

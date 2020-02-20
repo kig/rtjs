@@ -165,14 +165,19 @@ bool getSpecular(Ray r, int hitIndex, vec3 nml, Material material, out float fre
     return false;
 }
 
-bool traceBounce(inout Ray r, in Plane plane, in vec3 bg0, out Hit hit, out float fresnel, out vec3 nml, out vec3 texNml, out Material material, out Coating coating, out vec3 transmit, in bool isPrimaryRay, inout bool specular) {
-	hit = setupHit();
+Hit evaluateHit(in Ray r, in Plane plane) {
+	Hit hit = setupHit();
 	Hit hit2 = setupHit();
 	intersectPlane(r, plane, hit2);
 	intersectGrid(r, hit);
     if (hit2.distance < hit.distance) {
         hit = hit2;
     }
+    return hit;
+}
+
+bool traceBounce(inout Ray r, in Plane plane, in vec3 bg0, out Hit hit, out float fresnel, out vec3 nml, out vec3 texNml, out Material material, out Coating coating, out vec3 transmit, in bool isPrimaryRay, inout bool specular) {
+    hit = evaluateHit(r, plane);
     if (hit.distance >= SKY_DISTANCE) {
 		return false;
 	}
@@ -188,7 +193,7 @@ bool traceBounce(inout Ray r, in Plane plane, in vec3 bg0, out Hit hit, out floa
     material = getMaterial(r, hit.index);
 	nml = getNormal(r, hit.index, material.specular, texNml);
 
-    vec3 fog = (1.0-exp(-hit.distance/40.0)) * bg0;
+    vec3 fog = vec3(0.0); // (1.0-exp(-hit.distance/40.0)) * bg0;
 	r.light += r.transmit * (getEmission(r, hit.index, material, texNml) + fog);
 
     specular = getSpecular(r, hit.index, nml, material, fresnel, coating);
@@ -206,7 +211,7 @@ vec3 skybox(in Ray r) {
     return bg;
 }
 
-vec3 trace(vec2 fragCoord) {
+vec3 trace(vec2 fragCoord, inout vec3 hitPoint, out int hitIndex, out float hitRoughness) {
 	float epsilon = deviceEpsilonTrace;
 
 	Plane plane = Plane(vec3(0.0), vec3(0.0, 1.0, 0.0), vec3(0.5));
@@ -233,11 +238,14 @@ vec3 trace(vec2 fragCoord) {
 	bool hitScene = traceBounce(r, plane, bg0, hit, fresnel, nml, texNml, material, coating, transmit, true, specular);
 
 	if (hitScene) {
+        hitPoint = r.o;
+        hitIndex = hit.index;
 		float fakeBounce = iFrame * 1025.0;
 		for (int i = 0; i < 6; i++) {
 			float idx = fragCoord.y * iResolution.x * 16.0 + fragCoord.x * 16.0 + fakeBounce;
 			ivec2 idxv = ivec2(mod(idx / 1024.0, 1024.0), mod(idx, 1024.0));
             float troughness = sampleFloat(coating.roughness, texNml, r);
+            if (i == 0) hitRoughness = troughness;
             float randomDirFactor = (1.0-fresnel*fresnel) * troughness;
 
             float bounceCount = (randomDirFactor*0.1 > random(r.o.xy)) ? 2.0 : 1.0;
