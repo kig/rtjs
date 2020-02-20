@@ -211,7 +211,7 @@ vec3 skybox(in Ray r) {
     return bg;
 }
 
-vec3 trace(vec2 fragCoord, out vec3 hitPoint, out int hitIndex, out float hitRoughness) {
+vec3 trace(vec2 fragCoord, inout vec3 hitPoint, out int hitIndex, out float hitRoughness) {
 	float epsilon = deviceEpsilonTrace;
 
 	Plane plane = Plane(vec3(0.0), vec3(0.0, 1.0, 0.0), vec3(0.5));

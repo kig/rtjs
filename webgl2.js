@@ -1,5 +1,12 @@
 const mobile = /mobile/i.test(navigator.userAgent);
-const dpr = (window.devicePixelRatio || 1);
+var dpr = mobile ? 1 : (window.devicePixelRatio || 1);
+var resAdjust = 1;
+if (/Mac OS X/.test(navigator.userAgent)) {
+    if (window.screen.width !== 1280 && dpr === 2) {
+        resAdjust = 1280 / window.screen.width;
+    }
+}
+dpr *= resAdjust;
 
 class Coating {
 
@@ -427,13 +434,13 @@ class WebGLTracer2 {
                 bool fetched = false;
                 bool applied = false;
                 for (float i = 0.0; i < samples; i++) {
-                    hitPoint = vec3(100.0e6+1.0);
+                    hitPoint = vec3(1.0e6+1.0);
                     float y = mod(i, 2.0);
                     float x = i - y * 2.0;
                     float ry = mod(y + iFrame / aaSize, aaSize);
                     float rx = mod(x + iFrame - aaSize * ry, aaSize);
                     vec3 c = trace(gl_FragCoord.xy + (vec2(rx,ry) + vec2(random(i+0.5*vec2(rx,ry)), random(i+0.5+0.5*vec2(rx,ry)))) / aaSize, hitPoint, hitIndex, hitRoughness);
-                    if (useTemporalReprojection && !fetched && hitPoint.x < 99.0e6 && iFrame < 1.0) {
+                    if (useTemporalReprojection && !fetched && hitPoint.x < 1.0e6 && iFrame < 1.0) {
                         vec4 uv = previousCameraProjectionMatrix * inverse(previousCameraMatrixWorld) * vec4(hitPoint, 1.0);
                         uv /= uv.w;
                         uv.x /= (iResolution.x / iResolution.y);
@@ -892,10 +899,12 @@ class WebGLTracer2 {
     render() {
         if (this.controls.changed || this.frame < parseFloat(window.maxFramesToRender.value)) {
 
+            var dprValue = resAdjust;
+
             if (this.controls.focusPoint) {
                 const ray = this.setupRay({
-                    x: this.controls.focusPoint.x * dpr,
-                    y: this.controls.focusPoint.y * dpr
+                    x: this.controls.focusPoint.x * dprValue,
+                    y: this.controls.focusPoint.y * dprValue
                 });
                 this.controls.focusPoint = null;
                 const hit = this.voxelGrid.intersect(ray);
@@ -934,7 +943,7 @@ class WebGLTracer2 {
             if (cameraMatrixChanged || apertureChanged || this.controls.changed || controlsActive) {
                 this.frame = 0;
             }
-            
+
             this.controls.changed = false;
 
             this.material.uniforms.costVis.value = this.controls.debug;
@@ -943,17 +952,14 @@ class WebGLTracer2 {
             this.blitMaterial.uniforms.showConverged.value = !!window.showConverged.checked;
             this.blitMaterial.uniforms.showSampleCount.value = !!window.showSampleCount.checked;
 
-            var dprValue = dpr;
-
-            if (this.renderer.domElement.width !== window.innerWidth*dpr ||
-                this.renderer.domElement.height !== window.innerHeight*dpr
+            if (this.renderer.domElement.width !== window.innerWidth*dprValue ||
+                this.renderer.domElement.height !== window.innerHeight*dprValue
             ) {
-                this.frame = 0;
-                this.renderer.setSize(window.innerWidth*dpr, window.innerHeight*dpr);
-                this.renderTarget.setSize(window.innerWidth*dpr, window.innerHeight*dpr);
-                this.accumRenderTargetA.setSize(window.innerWidth*dpr, window.innerHeight*dpr);
-                this.accumRenderTargetB.setSize(window.innerWidth*dpr, window.innerHeight*dpr);
-                this.varianceRenderTarget.setSize(window.innerWidth*dpr, window.innerHeight*dpr);
+                this.renderer.setSize(window.innerWidth*dprValue, window.innerHeight*dprValue);
+                this.renderTarget.setSize(window.innerWidth*dprValue, window.innerHeight*dprValue);
+                this.accumRenderTargetA.setSize(window.innerWidth*dprValue, window.innerHeight*dprValue);
+                this.accumRenderTargetB.setSize(window.innerWidth*dprValue, window.innerHeight*dprValue);
+                this.varianceRenderTarget.setSize(window.innerWidth*dprValue, window.innerHeight*dprValue);
             }
 
             if (this.frame <= 1) this.rayBudget = this.startRayBudget;
@@ -962,8 +968,8 @@ class WebGLTracer2 {
                 if (this.frame === 0) this.startRayBudget = Math.min(1000, this.startRayBudget*1.01);
                 else this.rayBudget = Math.min(1000, this.rayBudget*1.1);
             } else if (this.frameTime > 20) {
-                if (this.frame === 0) this.startRayBudget = Math.max(0.01, this.startRayBudget*0.99);
-                else this.rayBudget = Math.max(1, this.rayBudget*0.8);
+                if (this.frame === 0) this.startRayBudget = Math.max(0.01, this.startRayBudget*0.8);
+                else this.rayBudget = Math.max(0.01, this.rayBudget*0.8);
             }
 
             this.stats.log('Frame', this.frame);
@@ -1055,7 +1061,7 @@ class WebGLTracer2 {
             //     this.renderer.render(this.varianceMesh, camera, this.varianceRenderTarget);
             // }
 
-            if (window.blurMove.checked && this.frame < 50 && dprValue === 1 && !this.controls.debug) {
+            if (window.blurMove.checked && this.frame < 50 && !this.controls.debug) {
                 this.blurMaterial.uniforms.sigma.value = 5.0 * Math.pow(1.0-(0.5-0.5*Math.cos(Math.PI * this.frame / 50)), 4.0);
                 this.blurMaterial.uniforms.direction.value = 0;
                 this.blurMaterial.uniforms.tex.value = this.accumRenderTargetB.texture;
