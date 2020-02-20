@@ -84,11 +84,10 @@ Material.glassy = (function() {
     m.specular.color = vecToArray(vec3(1.0));
     m.coat.color = vecToArray(vec3(0.85, 0.51, 0.35));
     m.volume.color = vecToArray(vec3(0.9, 0.71, 0.5));
-    m.specular.forwardScatter = m.coat.forwardScatter = -4;
-    m.volume.roughness = -3;
-    m.specular.roughness = 0.0;
-    m.specular.IOR = 1;
-    m.volume.density = 0.5;
+    m.volume.roughness = 0.0;
+    m.specular.roughness = 0.05;
+    m.specular.IOR = 1.5;
+    m.volume.density = 0.05;
     m.coat.IOR = 1;
     return m.toArray();
 })();
@@ -308,13 +307,19 @@ class WebGLTracer2 {
                 cameraApertureSize: { value: camera.apertureSize },
                 uvToWorld: { value: camera.uvToWorld },
                 cameraMatrixWorld: { value: camera.matrixWorld },
-                previousUVToWorld: { value: new THREE.Matrix4() },
                 previousCameraMatrixWorld: { value: new THREE.Matrix4() },
                 previousCameraProjectionMatrix: { value: new THREE.Matrix4() },
-                previousWorldToUV: { value: new THREE.Matrix4() },
                 previousCameraPosition: { value: new THREE.Vector3() },
                 deviceEpsilon: {value: mobile ? 0.01 : 0.001},
                 deviceEpsilonTrace: {value: mobile ? 0.05 : 0.01},
+
+                useTemporalReprojection: { value: true },
+                temporalReprojectionShowRejection: { value: false },
+                temporalReprojectionVarianceCutoff: { value: 2.0 },
+                temporalReprojectionWeight: { value: 20.0 },
+
+                firstFrameSampleBoost: {value: 1.0},
+
                 costVis: {value: false},
                 aaSize: {value: 4.0},
                 showFocalPlane: { value: false },
@@ -340,10 +345,16 @@ class WebGLTracer2 {
             uniform vec3 previousCameraPosition;
             uniform mat4 previousCameraMatrixWorld;
             uniform mat4 previousCameraProjectionMatrix;
-            uniform mat4 previousUVToWorld;
-            uniform mat4 previousWorldToUV;
+
             uniform sampler2D varianceTexture;
             uniform sampler2D tex;
+
+            uniform bool useTemporalReprojection;
+            uniform bool temporalReprojectionShowRejection;
+            uniform float temporalReprojectionVarianceCutoff;
+            uniform float temporalReprojectionWeight;
+
+            uniform float firstFrameSampleBoost;
 
             ${traceGLSL}
 
@@ -369,13 +380,13 @@ class WebGLTracer2 {
                 float boostFactor = (1.0 - clamp((distanceToCenter - fullBoostRadius) / boostRadius, 0.0, 1.0));
                 boostFactor *= 1.0 - clamp(iFrame / 10.0, 0.0, 1.0);
 
-                if (iFrame > 1.0) {
+                vec4 varianceMetrics = texelFetch(varianceTexture, ivec2(gl_FragCoord.xy), 0);
+                float errorLum = varianceMetrics.x;
+                float totalVariance = varianceMetrics.y;
+                bool converged = varianceMetrics.z > 0.0;
+                bool convergedVariance = varianceMetrics.w > 0.0;
 
-                    vec4 varianceMetrics = texelFetch(varianceTexture, ivec2(gl_FragCoord.xy), 0);
-                    float errorLum = varianceMetrics.x;
-                    float totalVariance = varianceMetrics.y;
-                    bool converged = varianceMetrics.z > 0.0;
-                    bool convergedVariance = varianceMetrics.w > 0.0;
+                if (iFrame > 1.0) {
 
                     if (( ((iFrame > 2.0 && iFrame < 10.0) || (iFrame > 30.0 && errorLum < 0.0001 && totalVariance < 0.01)) && (converged || convergedVariance || (iFrame >= 2.0 && (errorLum < 0.01 || totalVariance < 0.01))) )) {
                         FragColor = vec4(0.0, 0.0, 0.0, 0.0);
@@ -398,7 +409,7 @@ class WebGLTracer2 {
                     float sampleCountJitter = 0.0;
                     samples = max(1.0, boost + sampleCountJitter);
                 }
-                // if (iFrame == 1.0) samples *= 4.0;
+                if (iFrame == 1.0) samples *= firstFrameSampleBoost;
 
                 if (showBoost) {
                     sum.g += samples;
@@ -411,6 +422,8 @@ class WebGLTracer2 {
                 }
 
                 vec3 hitPoint;
+                int hitIndex;
+                float hitRoughness;
                 bool fetched = false;
                 bool applied = false;
                 for (float i = 0.0; i < samples; i++) {
@@ -419,8 +432,8 @@ class WebGLTracer2 {
                     float x = i - y * 2.0;
                     float ry = mod(y + iFrame / aaSize, aaSize);
                     float rx = mod(x + iFrame - aaSize * ry, aaSize);
-                    vec3 c = trace(gl_FragCoord.xy + (vec2(rx,ry) + vec2(random(i+0.5*vec2(rx,ry)), random(i+0.5+0.5*vec2(rx,ry)))) / aaSize, hitPoint);
-                    if (!fetched && hitPoint.x < 99.0e6 && iFrame < 2.0) {
+                    vec3 c = trace(gl_FragCoord.xy + (vec2(rx,ry) + vec2(random(i+0.5*vec2(rx,ry)), random(i+0.5+0.5*vec2(rx,ry)))) / aaSize, hitPoint, hitIndex, hitRoughness);
+                    if (useTemporalReprojection && !fetched && hitPoint.x < 99.0e6 && iFrame < 1.0) {
                         vec4 uv = previousCameraProjectionMatrix * inverse(previousCameraMatrixWorld) * vec4(hitPoint, 1.0);
                         uv /= uv.w;
                         uv.x /= (iResolution.x / iResolution.y);
@@ -439,16 +452,21 @@ class WebGLTracer2 {
                                 -1                        
                             );
                             Hit hit = evaluateHit(r, Plane(vec3(0.0), vec3(0.0, 1.0, 0.0), vec3(0.5)));
-                            if (hit.distance < SKY_DISTANCE && length(hitPoint - (previousCameraPosition+direction*hit.distance)) < 0.00001) {
-                                vec4 start = texelFetch(tex, ivec2(uv.xy * iResolution.xy - 0.5), 0);
-                                sum += vec4(start.rgb / max(1.0, start.a) * min(start.a, 25.0), min(start.a, 25.0));
-                                applied = true;
-                            } else {
-                                // sum += vec4(400.0, 0.0, 0.0, 100.0);
+                            if (hit.distance < SKY_DISTANCE && hit.index == hitIndex) {
+                                vec4 previousVariance = texture(varianceTexture, uv.xy, 0.0);
+                                if (previousVariance.x < temporalReprojectionVarianceCutoff) {
+                                    vec4 start = texture(tex, uv.xy, 0.0);
+                                    sum += vec4(start.rgb / max(1.0, start.a) * min(start.a, temporalReprojectionWeight), min(start.a, temporalReprojectionWeight));
+                                    applied = true;
+                                } else if (temporalReprojectionShowRejection) {
+                                    sum += vec4(0.0, 400.0, 0.0, 100.0);
+                                }
+                            } else if (temporalReprojectionShowRejection) {
+                                sum += vec4(400.0, 0.0, 0.0, 100.0);
                             }
                         }
                     }
-                    if (applied && c.g > 2.0*(sum.g/sum.a)) c *= 0.5;
+                    if (applied && c.g > (sum.g/sum.a)/0.75) c *= 0.75;
                     sum += vec4(c, 1.0);
                 }
                 if (applied) sum = vec4((sum.rgb / sum.a) * (samples+(sum.a-samples)*0.8), (samples+(sum.a-samples)*0.8));
@@ -499,10 +517,10 @@ class WebGLTracer2 {
 
             void main() {
 
-                if (iFrame == 0.0) {
-                    FragColor = vec4(1.0, 1.0, 0.0, 0.0);
-                    return;
-                }
+                // if (iFrame == 0.0) {
+                //     FragColor = vec4(1.0, 1.0, 0.0, 0.0);
+                //     return;
+                // }
 
                 vec4 prev = texelFetch(previousTex, ivec2(gl_FragCoord.xy), 0);
                 vec4 current = texelFetch(tex, ivec2(gl_FragCoord.xy), 0);
@@ -872,7 +890,7 @@ class WebGLTracer2 {
     }
 
     render() {
-        if (this.controls.changed || this.frame < 1245) {
+        if (this.controls.changed || this.frame < parseFloat(window.maxFramesToRender.value)) {
 
             if (this.controls.focusPoint) {
                 const ray = this.setupRay({
@@ -896,8 +914,6 @@ class WebGLTracer2 {
             this.material.uniforms.previousCameraMatrixWorld.value.copy(camera.matrixWorld);
             this.material.uniforms.previousCameraProjectionMatrix.value.copy(camera.projectionMatrix);
             this.material.uniforms.previousCameraPosition.value.copy(camera.position);
-            this.material.uniforms.previousUVToWorld.value.copy(camera.uvToWorld);
-            this.material.uniforms.previousWorldToUV.value.copy(camera.worldToUV);
             camera.setFocalLength(window.focalLength.value);
             camera.lookAt(camera.target);
             camera.updateProjectionMatrix();
@@ -918,8 +934,6 @@ class WebGLTracer2 {
             if (cameraMatrixChanged || apertureChanged || this.controls.changed || controlsActive) {
                 this.frame = 0;
             }
-
-            this.stats.log('Frame time', Math.round(this.frameTime*100)/100 + ' ms');
             
             this.controls.changed = false;
 
@@ -952,10 +966,17 @@ class WebGLTracer2 {
                 else this.rayBudget = Math.max(1, this.rayBudget*0.8);
             }
 
+            this.stats.log('Frame', this.frame);
+            this.stats.log('Frame time', Math.round(this.frameTime*100)/100 + ' ms');
             this.stats.log('Ray budget', Math.round((this.frame === 0 ? this.startRayBudget : this.rayBudget)*100)/100);
 
             this.material.uniforms.showFocalPlane.value = !!window.showFocalPlane.checked;
             this.material.uniforms.showBoost.value = !!window.showBoost.checked;
+            this.material.uniforms.useTemporalReprojection.value = !!window.useTemporalReprojection.checked;
+            this.material.uniforms.temporalReprojectionShowRejection.value = !!window.temporalReprojectionShowRejection.checked;
+            this.material.uniforms.temporalReprojectionVarianceCutoff.value = parseFloat(window.temporalReprojectionVarianceCutoff.value);
+            this.material.uniforms.temporalReprojectionWeight.value = parseFloat(window.temporalReprojectionWeight.value);
+            this.material.uniforms.firstFrameSampleBoost.value = parseFloat(window.firstFrameSampleBoost.value);
 
             this.material.uniforms.iTime.value = this.frame < 4 ? Math.SQRT2 : (Date.now() - this.startTime) / 1000;
             this.material.uniforms.cameraApertureSize.value = camera.apertureSize;
@@ -1034,8 +1055,8 @@ class WebGLTracer2 {
             //     this.renderer.render(this.varianceMesh, camera, this.varianceRenderTarget);
             // }
 
-            if (window.blurMove.checked && this.frame < 30 && dprValue === 1 && !this.controls.debug) {
-                this.blurMaterial.uniforms.sigma.value = 15.0 * Math.pow(1.0-(0.5-0.5*Math.cos(Math.PI * this.frame / 30)), 4.0);
+            if (window.blurMove.checked && this.frame < 50 && dprValue === 1 && !this.controls.debug) {
+                this.blurMaterial.uniforms.sigma.value = 5.0 * Math.pow(1.0-(0.5-0.5*Math.cos(Math.PI * this.frame / 50)), 4.0);
                 this.blurMaterial.uniforms.direction.value = 0;
                 this.blurMaterial.uniforms.tex.value = this.accumRenderTargetB.texture;
                 this.renderer.render(this.blurMesh, camera, this.accumRenderTargetA);
@@ -1188,18 +1209,19 @@ function LoadOBJ(path) {
     voxelGrid = vg;
     console.timeEnd('Create VoxelGrid');
 
-
+    document.querySelectorAll("input[type=range]").forEach(el => {
+        el.oninput = function(ev) {
+            tracer.controls.pinching = true;
+            tracer.controls.changed = true;
+            this.setAttribute('value', this.value);
+        };
+        el.onchange = function(ev) {
+            tracer.controls.pinching = false;
+            tracer.controls.changed = true;
+            this.setAttribute('value', this.value);
+        };
+    });
     
-    window.fStop.oninput = function(ev) {
-        tracer.controls.pinching = true;
-        tracer.controls.changed = true;
-        this.setAttribute('value', this.value);
-    };
-    window.fStop.onchange = function(ev) {
-        tracer.controls.pinching = false;
-        tracer.controls.changed = true;
-        this.setAttribute('value', this.value);
-    };
 
     window.focalLength.oninput = function(ev) {
         tracer.controls.pinching = true;

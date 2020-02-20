@@ -211,7 +211,7 @@ vec3 skybox(in Ray r) {
     return bg;
 }
 
-vec3 trace(vec2 fragCoord, out vec3 hitPoint) {
+vec3 trace(vec2 fragCoord, out vec3 hitPoint, out int hitIndex, out float hitRoughness) {
 	float epsilon = deviceEpsilonTrace;
 
 	Plane plane = Plane(vec3(0.0), vec3(0.0, 1.0, 0.0), vec3(0.5));
@@ -239,11 +239,13 @@ vec3 trace(vec2 fragCoord, out vec3 hitPoint) {
 
 	if (hitScene) {
         hitPoint = r.o;
+        hitIndex = hit.index;
 		float fakeBounce = iFrame * 1025.0;
 		for (int i = 0; i < 6; i++) {
 			float idx = fragCoord.y * iResolution.x * 16.0 + fragCoord.x * 16.0 + fakeBounce;
 			ivec2 idxv = ivec2(mod(idx / 1024.0, 1024.0), mod(idx, 1024.0));
             float troughness = sampleFloat(coating.roughness, texNml, r);
+            if (i == 0) hitRoughness = troughness;
             float randomDirFactor = (1.0-fresnel*fresnel) * troughness;
 
             float bounceCount = (randomDirFactor*0.1 > random(r.o.xy)) ? 2.0 : 1.0;
