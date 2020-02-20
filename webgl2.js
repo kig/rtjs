@@ -968,7 +968,8 @@ class WebGLTracer2 {
                 if (this.frame === 0) this.startRayBudget = Math.min(1000, this.startRayBudget*1.01);
                 else this.rayBudget = Math.min(1000, this.rayBudget*1.1);
             } else if (this.frameTime > 20) {
-                if (this.frame === 0) this.startRayBudget = Math.max(0.01, this.startRayBudget*0.8);
+                const clampSpeed = max(0.9, 20 / this.frameTime);
+                if (this.frame === 0) this.startRayBudget = Math.max(0.01, this.startRayBudget*clampSpeed);
                 else this.rayBudget = Math.max(0.01, this.rayBudget*0.8);
             }
 
