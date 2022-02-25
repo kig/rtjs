@@ -336,6 +336,8 @@ class WebGLTracer2 {
 
             precision highp float;
             precision highp int;
+            precision highp sampler2DArray;
+
             precision highp sampler2D;
             precision highp usampler2D;
             precision highp isampler2D;
@@ -351,6 +353,8 @@ class WebGLTracer2 {
 
             precision highp float;
             precision highp int;
+            precision highp sampler2DArray;
+
             precision highp sampler2D;
             precision highp usampler2D;
             precision highp isampler2D;
@@ -510,6 +514,8 @@ class WebGLTracer2 {
 
             precision highp float;
             precision highp int;
+            precision highp sampler2DArray;
+
             precision highp sampler2D;
             precision highp usampler2D;
             precision highp isampler2D;
@@ -599,6 +605,8 @@ class WebGLTracer2 {
 
             precision highp float;
             precision highp int;
+            precision highp sampler2DArray;
+
             precision highp sampler2D;
             precision highp usampler2D;
             precision highp isampler2D;
@@ -640,6 +648,8 @@ class WebGLTracer2 {
 
             precision highp float;
             precision highp int;
+            precision highp sampler2DArray;
+
             precision highp sampler2D;
             precision highp usampler2D;
             precision highp isampler2D;
@@ -695,6 +705,8 @@ class WebGLTracer2 {
 
             precision highp float;
             precision highp int;
+            precision highp sampler2DArray;
+
             precision highp sampler2D;
             precision highp usampler2D;
             precision highp isampler2D;
@@ -762,6 +774,8 @@ class WebGLTracer2 {
 
             precision highp float;
             precision highp int;
+            precision highp sampler2DArray;
+
             precision highp sampler2D;
             precision highp usampler2D;
             precision highp isampler2D;
