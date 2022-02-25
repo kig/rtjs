@@ -122,6 +122,10 @@ class WebGLTracer2 {
 
             precision highp float;
             precision highp int;
+            precision highp sampler2D;
+            precision highp usampler2D;
+            precision highp isampler2D;
+
 
             in vec3 position;
 
@@ -132,7 +136,10 @@ class WebGLTracer2 {
             fragmentShader: `#version 300 es
 
             precision highp float;
-            precision highp int;
+                        precision highp sampler2D;
+            precision highp usampler2D;
+            precision highp isampler2D;
+
            
             uniform vec3 cameraPosition;
             uniform sampler2D varianceTexture;
@@ -227,6 +234,10 @@ class WebGLTracer2 {
 
             precision highp float;
             precision highp int;
+            precision highp sampler2D;
+            precision highp usampler2D;
+            precision highp isampler2D;
+
             
             uniform sampler2D tex;
             uniform sampler2D previousTex;
@@ -312,6 +323,10 @@ class WebGLTracer2 {
 
             precision highp float;
             precision highp int;
+            precision highp sampler2D;
+            precision highp usampler2D;
+            precision highp isampler2D;
+
             
             uniform sampler2D tex;
             uniform sampler2D accumTex;
@@ -349,6 +364,10 @@ class WebGLTracer2 {
 
             precision highp float;
             precision highp int;
+            precision highp sampler2D;
+            precision highp usampler2D;
+            precision highp isampler2D;
+
             
             uniform sampler2D tex;
             uniform float sigma;
@@ -399,6 +418,10 @@ class WebGLTracer2 {
 
             precision highp float;
             precision highp int;
+            precision highp sampler2D;
+            precision highp usampler2D;
+            precision highp isampler2D;
+
             
             uniform sampler2D tex;
             uniform sampler2D varianceTexture;
